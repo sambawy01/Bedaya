@@ -1,138 +1,138 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowRight, ArrowLeft, UserCircle2 } from 'lucide-react';
-import AlifMark from '../components/AlifMark';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Check, Volume2 } from 'lucide-react';
+import ListenButton from '../components/ListenButton';
+import NameRecorder from '../components/NameRecorder';
 import { api } from '../lib/api';
 import { useLearner } from '../context/LearnerContext';
+import { useGuide } from '../context/GuideContext';
+import { useAutoSpeak } from '../lib/useAutoSpeak';
+import { speak, unlockAudio } from '../lib/voice';
+import { savePendingNameAudio, promotePendingNameAudio } from '../lib/recorder';
 
 const GUIDES = [
-  { key: 'umm_yasmin', label: 'أم ياسمين', subtitle: 'صوت نسائي — من الدلتا' },
-  { key: 'amm_hassan', label: 'عم حسن',    subtitle: 'صوت رجالي — من أسوان' },
+  { key: 'umm_yasmin', label: 'أم ياسمين', sample: 'أنا أم ياسمين، هكون معاك في كل خطوة.', emoji: '👩🏽' },
+  { key: 'amm_hassan', label: 'عم حسن', sample: 'أنا عم حسن، هتعلّم معايا براحتك.', emoji: '👨🏽' },
 ];
+
+const GUIDE_PROMPT = { key: 'pick_guide', text: 'اختار الصوت اللي يعجبك. دوس على الصورة عشان تسمعه.' };
+const NAME_PROMPT  = { key: 'say_name',   text: 'دلوقتي قول اسمك. دوس على الزرار وقول اسمك.' };
 
 export default function SignupPage() {
   const navigate = useNavigate();
   const { login } = useLearner();
-  const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
-  const [voiceGuide, setVoiceGuide] = useState(null);
+  const { guide, chooseGuide } = useGuide();
+  const [step, setStep] = useState('guide'); // guide | name
+  const [picked, setPicked] = useState(null);
+  const [nameAudio, setNameAudio] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
 
-  function back() {
-    if (step === 0) navigate('/');
-    else setStep(s => s - 1);
+  useAutoSpeak(step === 'guide' ? GUIDE_PROMPT : NAME_PROMPT, {
+    guide: step === 'name' ? (picked || guide) : guide,
+    deps: [step],
+  });
+
+  function pick(g) {
+    unlockAudio();
+    setPicked(g.key);
+    chooseGuide(g.key);
+    speak({ key: `sample_${g.key}`, text: g.sample }, { guide: g.key });
+  }
+
+  function toName() {
+    unlockAudio();
+    setStep('name');
   }
 
   async function finish() {
-    if (!name.trim() || !voiceGuide) return;
     setSaving(true);
-    setError(null);
+    if (nameAudio) savePendingNameAudio(nameAudio);
     try {
       const learner = await api('/learners', {
         method: 'POST',
         body: {
-          name: name.trim(),
-          voiceGuide,
+          // Identity is the spoken recording (kept on-device). The server row
+          // just needs a non-empty name; the UI never shows it.
+          name: 'متعلّم',
+          voiceGuide: picked || guide,
           letterOrder: 'frequency',
           deviceId: localStorage.getItem('bedaya_device_id') || `dev-${Date.now()}`,
         },
       });
+      promotePendingNameAudio(learner.id);
       login(learner);
       navigate('/home', { replace: true });
-    } catch (e) {
-      setError(e.message || 'حدث خطأ، حاول مرة أخرى');
-    } finally {
+    } catch {
+      speak('حصل خطأ صغير. حاول تاني.', { guide: picked || guide });
       setSaving(false);
     }
   }
 
   return (
     <div className="min-h-screen flex flex-col items-center px-6 py-10">
-      <div className="w-full max-w-sm">
-        <button
-          onClick={back}
-          className="text-stone-500 hover:text-stone-800 flex items-center gap-1 font-medium"
-          aria-label="رجوع"
-        >
-          <ArrowRight size={18} />
-          رجوع
-        </button>
-
-        <div className="mt-6 mb-8 flex items-center justify-center">
-          <AlifMark size={56} />
+      <div className="w-full max-w-sm flex-1 flex flex-col">
+        <div className="flex justify-between items-center mb-8">
+          <button
+            onClick={() => (step === 'guide' ? navigate('/') : setStep('guide'))}
+            className="w-12 h-12 rounded-full bg-white border-2 border-stone-200 flex items-center justify-center text-stone-500"
+            aria-label="رجوع"
+          >
+            <ArrowLeft size={22} className="rotate-180" />
+          </button>
+          <ListenButton line={step === 'guide' ? GUIDE_PROMPT : NAME_PROMPT} />
         </div>
 
-        {step === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            key="step0"
-          >
-            <h2 className="font-display text-2xl font-bold text-center">ما اسمك؟</h2>
-            <p className="text-stone-500 text-center mt-1 text-sm">
-              نحتاج اسمك فقط. بدون إيميل، بدون رقم.
-            </p>
-            <div className="mt-6 relative">
-              <UserCircle2
-                size={20}
-                className="absolute top-1/2 -translate-y-1/2 right-3 text-stone-400"
-              />
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="اكتب اسمك"
-                className="w-full text-lg py-4 pr-10 pl-4 rounded-2xl border-2 border-stone-200 focus:border-[var(--color-bedaya-teal)] outline-none bg-white"
-                autoFocus
-                dir="rtl"
-              />
-            </div>
-            <button
-              onClick={() => name.trim() && setStep(1)}
-              disabled={!name.trim()}
-              className="w-full mt-6 py-4 rounded-2xl bg-[var(--color-bedaya-teal)] text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              التالي
-              <ArrowLeft size={18} />
-            </button>
-          </motion.div>
-        )}
+        <AnimatePresence mode="wait">
+          {step === 'guide' && (
+            <motion.div key="guide" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <div className="space-y-4">
+                {GUIDES.map((g) => (
+                  <button
+                    key={g.key}
+                    onClick={() => pick(g)}
+                    className={`w-full p-5 rounded-3xl border-2 flex items-center gap-4 transition ${
+                      picked === g.key
+                        ? 'border-[var(--color-bedaya-teal)] bg-emerald-50'
+                        : 'border-stone-200 bg-white'
+                    }`}
+                  >
+                    <span className="text-5xl" aria-hidden>{g.emoji}</span>
+                    <span className="font-display text-2xl font-bold flex-1 text-right">{g.label}</span>
+                    {picked === g.key
+                      ? <Check size={28} className="text-[var(--color-bedaya-teal)]" />
+                      : <Volume2 size={24} className="text-stone-400" />}
+                  </button>
+                ))}
+              </div>
 
-        {step === 1 && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            key="step1"
-          >
-            <h2 className="font-display text-2xl font-bold text-center">من سيرافقك؟</h2>
-            <p className="text-stone-500 text-center mt-1 text-sm">اختر الصوت الذي يناسبك.</p>
-            <div className="mt-6 space-y-3">
-              {GUIDES.map((g) => (
-                <button
-                  key={g.key}
-                  onClick={() => setVoiceGuide(g.key)}
-                  className={`w-full text-right p-4 rounded-2xl border-2 transition ${
-                    voiceGuide === g.key
-                      ? 'border-[var(--color-bedaya-teal)] bg-emerald-50'
-                      : 'border-stone-200 bg-white hover:border-stone-300'
-                  }`}
-                >
-                  <div className="font-display font-bold text-lg">{g.label}</div>
-                  <div className="text-sm text-stone-500 mt-0.5">{g.subtitle}</div>
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={finish}
-              disabled={!voiceGuide || saving}
-              className="w-full mt-6 py-4 rounded-2xl bg-[var(--color-bedaya-teal)] text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? 'لحظة…' : 'ابدأ الدرس الأول'}
-            </button>
-            {error && <p className="text-rose-600 text-sm text-center mt-3">{error}</p>}
-          </motion.div>
-        )}
+              <button
+                onClick={toName}
+                disabled={!picked}
+                aria-label="تابع"
+                className="mt-10 w-full h-20 rounded-3xl bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center disabled:opacity-40"
+              >
+                <ArrowLeft size={44} strokeWidth={2.5} />
+              </button>
+            </motion.div>
+          )}
+
+          {step === 'name' && (
+            <motion.div key="name" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col">
+              <div className="flex-1 flex items-center justify-center py-6">
+                <NameRecorder onCaptured={setNameAudio} />
+              </div>
+              <button
+                onClick={finish}
+                disabled={saving}
+                aria-label="ابدأ"
+                className="w-full h-20 rounded-3xl bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center disabled:opacity-50"
+              >
+                <ArrowLeft size={44} strokeWidth={2.5} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

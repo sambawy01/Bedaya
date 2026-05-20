@@ -7,7 +7,7 @@ import { RotateCcw, Check } from 'lucide-react';
  *
  * Privacy: nothing leaves the canvas. We don't save strokes anywhere.
  */
-export default function TraceCanvas({ letter, onComplete, targetCount = 3 }) {
+export default function TraceCanvas({ letter, onComplete, targetCount = 1 }) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const drawingRef = useRef(false);
@@ -102,9 +102,21 @@ export default function TraceCanvas({ letter, onComplete, targetCount = 3 }) {
   return (
     <div>
       <p className="text-center text-stone-500 mb-3 font-medium">
-        مرّر إصبعك فوق الحرف
-        <span className="mx-2 text-stone-400">·</span>
-        <span className="text-[var(--color-bedaya-teal)] font-bold">{strokes}/{targetCount}</span>
+        {targetCount === 1
+          ? 'اكتب الحرف بإصبعك فوق الخط'
+          : `اكتب الحرف ${targetCount} مرّات`}
+        {targetCount > 1 && (
+          <span className="inline-flex gap-1 mr-2 align-middle">
+            {Array.from({ length: targetCount }).map((_, i) => (
+              <span
+                key={i}
+                className={`inline-block w-2 h-2 rounded-full ${
+                  i < strokes ? 'bg-[var(--color-bedaya-teal)]' : 'bg-stone-300'
+                }`}
+              />
+            ))}
+          </span>
+        )}
       </p>
       <div className="rounded-3xl border-2 border-stone-200 overflow-hidden bg-white" style={{ touchAction: 'none' }}>
         <canvas

@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Volume2, ArrowLeft, CheckCircle2, Home } from 'lucide-react';
 import { api } from '../lib/api';
 import { useLearner } from '../context/LearnerContext';
-import { speak, stopSpeaking } from '../lib/voice';
+import { useGuide } from '../context/GuideContext';
+import { speak, stopSpeaking, unlockAudio } from '../lib/voice';
+import ListenButton from '../components/ListenButton';
 import TraceCanvas from '../components/TraceCanvas';
 
 const PHASES = ['warmup', 'phonics', 'trace', 'story', 'done'];
@@ -12,12 +14,14 @@ const PHASES = ['warmup', 'phonics', 'trace', 'story', 'done'];
 export default function LessonPage() {
   const navigate = useNavigate();
   const { learner, setLearner } = useLearner();
+  const { guide } = useGuide();
   const [plan, setPlan] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [phase, setPhase] = useState('warmup');
   const [story, setStory] = useState(null);
   const [storyLoading, setStoryLoading] = useState(false);
   const [error, setError] = useState(null);
+  const spokenPhase = useRef(null);
 
   useEffect(() => {
     if (!learner) { navigate('/', { replace: true }); return; }
@@ -26,11 +30,7 @@ export default function LessonPage() {
       try {
         const p = await api(`/lessons/next/${learner.id}`);
         if (cancelled) return;
-        if (p.complete) {
-          setPhase('done');
-          setPlan(p);
-          return;
-        }
+        if (p.complete) { setPhase('done'); setPlan(p); return; }
         const sess = await api('/lessons/start', {
           method: 'POST',
           body: { learnerId: learner.id, letter: p.newLetter.glyph },
@@ -38,7 +38,6 @@ export default function LessonPage() {
         if (cancelled) return;
         setPlan(p);
         setSessionId(sess.id);
-        // If learner has no warmup yet, skip straight to phonics.
         setPhase(p.warmup.length === 0 ? 'phonics' : 'warmup');
       } catch (e) {
         if (!cancelled) setError(e.message || 'حدث خطأ');
@@ -48,12 +47,53 @@ export default function LessonPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learner]);
 
-  const advance = useCallback(async (next) => {
+  const newLetter = plan?.newLetter;
+
+  // Build the spoken instruction for the current phase.
+  const phaseLine = useCallback(() => {
+    switch (phase) {
+      case 'warmup':
+        return 'دي الحروف اللي عرفتها. دوس على أي حرف عشان تسمعه. بعدين دوس الزرار الأخضر عشان نكمل.';
+      case 'phonics':
+        return newLetter ? `ده حرف جديد. اسمه ${newLetter.name}. دوس على الزرار البرتقالي عشان تسمعه.` : '';
+      case 'trace':
+        return 'دلوقتي اكتب الحرف بإصبعك فوق الخط.';
+      case 'story':
+        if (!story) return 'لحظة صغيرة.';
+        return story.mode === 'words'
+          ? 'دي كلمات فيها بس الحروف اللي عرفتها. دوس عليها عشان تسمعها.'
+          : story.mode === 'letters'
+          ? 'برافو! ده أول حرف. الكلمات هتيجي بعد حروف أكتر.'
+          : 'دي قصة قصيرة. دوس عشان تسمعها.';
+      case 'done':
+        return 'برافو عليك! خلّصت درس النهاردة.';
+      default:
+        return '';
+    }
+  }, [phase, newLetter, story]);
+
+  // Auto-speak on phase change. In phonics, follow with the letter sound.
+  useEffect(() => {
+    if (phase === 'idle') return;
+    const fingerprint = `${phase}:${story?.mode || ''}:${storyLoading}`;
+    if (spokenPhase.current === fingerprint) return;
+    spokenPhase.current = fingerprint;
+    const line = phaseLine();
+    if (!line) return;
+    const t = setTimeout(() => {
+      speak(line, { guide });
+      if (phase === 'phonics' && newLetter) {
+        setTimeout(() => speak(newLetter.glyph, { guide }), 2600);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, story, storyLoading]);
+
+  const advance = useCallback((next) => {
+    unlockAudio();
     if (sessionId && (phase === 'warmup' || phase === 'phonics' || phase === 'story')) {
-      api('/lessons/phase', {
-        method: 'POST',
-        body: { sessionId, phase: phase === 'trace' ? 'phonics' : phase },
-      }).catch(() => {});
+      api('/lessons/phase', { method: 'POST', body: { sessionId, phase } }).catch(() => {});
     }
     setPhase(next);
   }, [sessionId, phase]);
@@ -62,11 +102,10 @@ export default function LessonPage() {
     if (!learner) return;
     setStoryLoading(true);
     try {
-      const result = await api('/story', {
-        method: 'POST',
-        body: { learnerId: learner.id },
-      });
+      const result = await api('/story', { method: 'POST', body: { learnerId: learner.id } });
       setStory(result);
+      // Auto-read what was produced.
+      setTimeout(() => speak(result.story, { guide }), 1200);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -78,57 +117,56 @@ export default function LessonPage() {
     if (!sessionId) { navigate('/home'); return; }
     try {
       const result = await api('/lessons/complete', {
-        method: 'POST',
-        body: { sessionId, masterLetter: true },
+        method: 'POST', body: { sessionId, masterLetter: true },
       });
       if (result?.learner) setLearner(result.learner);
-    } catch {/* best-effort */}
+    } catch { /* best-effort */ }
     navigate('/home');
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6">
-        <p className="text-rose-600 font-bold">{error}</p>
-        <button onClick={() => navigate('/home')} className="mt-4 text-stone-600 underline">
-          العودة للرئيسية
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4">
+        <ListenButton line="حصل خطأ. ارجع للرئيسية." size="lg" />
+        <button
+          onClick={() => navigate('/home')}
+          className="w-16 h-16 rounded-full bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center"
+          aria-label="الرئيسية"
+        >
+          <ArrowLeft size={30} className="rotate-180" />
         </button>
       </div>
     );
   }
 
   if (!plan && phase !== 'done') {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-stone-400">لحظة…</p>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center text-stone-400">لحظة…</div>;
   }
-
-  const newLetter = plan?.newLetter;
 
   return (
     <div className="min-h-screen px-6 py-8 max-w-md mx-auto">
-      <PhaseDots current={phase} />
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => { stopSpeaking(); navigate('/home'); }}
+          aria-label="الرئيسية"
+          className="w-12 h-12 rounded-full bg-white border-2 border-stone-200 flex items-center justify-center text-stone-500 shrink-0"
+        >
+          <Home size={22} />
+        </button>
+        <PhaseDots current={phase} />
+        <ListenButton line={phaseLine()} />
+      </div>
 
       <AnimatePresence mode="wait">
         {phase === 'warmup' && (
-          <motion.div
-            key="warmup"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-          >
-            <h2 className="font-display text-2xl font-bold text-center mb-2">حروف عرفتها</h2>
-            <p className="text-stone-500 text-center text-sm mb-6">
-              راجعها قبل ما نتعلّم حرف جديد.
-            </p>
-            <div className="grid grid-cols-4 gap-3 mb-8">
+          <motion.div key="warmup" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <div className="grid grid-cols-4 gap-3 mb-10">
               {plan.warmup.map((g) => (
                 <button
                   key={g}
-                  onClick={() => speak(g, { guide: learner?.voice_guide })}
+                  onClick={() => { unlockAudio(); speak(g, { guide }); }}
                   className="aspect-square rounded-2xl bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center font-script text-3xl font-bold text-[var(--color-bedaya-teal)]"
+                  aria-label={`الحرف ${g}`}
                 >
                   {g}
                 </button>
@@ -136,41 +174,32 @@ export default function LessonPage() {
             </div>
             <button
               onClick={() => advance('phonics')}
-              className="w-full py-4 rounded-2xl bg-[var(--color-bedaya-teal)] text-white font-bold text-lg"
+              aria-label="تابع"
+              className="w-full h-20 rounded-3xl bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center"
             >
-              تابع للحرف الجديد
+              <ArrowLeft size={44} strokeWidth={2.5} />
             </button>
           </motion.div>
         )}
 
         {phase === 'phonics' && newLetter && (
-          <motion.div
-            key="phonics"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="text-center"
-          >
-            <p className="text-sm text-[var(--color-bedaya-teal)] font-bold uppercase tracking-wide mb-2">
-              الحرف الجديد
-            </p>
-            <p className="font-display text-xl font-bold mb-6">{newLetter.name}</p>
-            <div className="mx-auto w-48 h-48 rounded-3xl bg-white border-2 border-stone-200 flex items-center justify-center font-script text-9xl font-bold text-[var(--color-bedaya-ink)]">
+          <motion.div key="phonics" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-center">
+            <div className="mx-auto w-52 h-52 rounded-3xl bg-white border-2 border-stone-200 flex items-center justify-center font-script text-9xl font-bold mb-6">
               {newLetter.glyph}
             </div>
             <button
-              onClick={() => speak(newLetter.glyph, { guide: learner?.voice_guide })}
-              className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 font-bold"
+              onClick={() => { unlockAudio(); speak(newLetter.glyph, { guide }); }}
+              aria-label="اسمع الحرف"
+              className="mx-auto w-20 h-20 rounded-full bg-[var(--color-bedaya-clay)] text-white shadow-md flex items-center justify-center"
             >
-              <Volume2 size={18} />
-              اسمع الحرف
+              <Volume2 size={36} />
             </button>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               {newLetter.examples.map((w) => (
                 <button
                   key={w}
-                  onClick={() => speak(w, { guide: learner?.voice_guide })}
-                  className="px-3 py-2 rounded-xl bg-white border border-stone-200 font-script text-lg"
+                  onClick={() => { unlockAudio(); speak(w, { guide }); }}
+                  className="px-4 py-3 rounded-xl bg-white border border-stone-200 font-script text-2xl"
                 >
                   {w}
                 </button>
@@ -178,32 +207,23 @@ export default function LessonPage() {
             </div>
             <button
               onClick={() => advance('trace')}
-              className="w-full mt-8 py-4 rounded-2xl bg-[var(--color-bedaya-teal)] text-white font-bold text-lg flex items-center justify-center gap-2"
+              aria-label="اكتب الحرف"
+              className="w-full mt-10 h-20 rounded-3xl bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center"
             >
-              اكتب الحرف
-              <ArrowRight size={18} className="rotate-180" />
+              <ArrowLeft size={44} strokeWidth={2.5} />
             </button>
           </motion.div>
         )}
 
         {phase === 'trace' && newLetter && (
-          <motion.div
-            key="trace"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-          >
-            <h2 className="font-display text-2xl font-bold text-center mb-1">اكتب {newLetter.name}</h2>
+          <motion.div key="trace" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <TraceCanvas
               letter={newLetter.glyph}
-              onComplete={async () => {
+              onComplete={() => {
                 if (learner) {
-                  api('/trace', {
-                    method: 'POST',
-                    body: { learnerId: learner.id, letter: newLetter.glyph },
-                  }).catch(() => {});
+                  api('/trace', { method: 'POST', body: { learnerId: learner.id, letter: newLetter.glyph } }).catch(() => {});
                 }
-                advance('story');
+                setPhase('story');
                 loadStory();
               }}
             />
@@ -211,47 +231,27 @@ export default function LessonPage() {
         )}
 
         {phase === 'story' && (
-          <motion.div
-            key="story"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="text-center"
-          >
-            <p className="text-sm text-[var(--color-bedaya-teal)] font-bold uppercase tracking-wide mb-2">
-              {story?.mode === 'words' ? 'اقرأ هذه الكلمات'
-                : story?.mode === 'letters' ? 'الحرف الذي تعلّمته'
-                : 'القصة'}
-            </p>
-            <p className="text-stone-500 text-sm mb-6">
-              {story?.mode === 'words'
-                ? 'كل كلمة فيها فقط الحروف اللي عرفتها.'
-                : story?.mode === 'letters'
-                ? 'أحسنت! هذا أول حرف. الكلمات تبدأ بعد حروف أكثر.'
-                : 'قصة قصيرة من الحروف اللي عرفتها.'}
-            </p>
+          <motion.div key="story" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-center">
             {storyLoading || !story ? (
               <div className="py-12 text-stone-400">لحظة…</div>
             ) : (
               <>
-                <div
-                  dir="rtl"
-                  className="font-script text-3xl leading-loose bg-white border-2 border-stone-200 rounded-3xl p-6 min-h-32"
-                >
+                <div dir="rtl" className="font-script text-4xl leading-loose bg-white border-2 border-stone-200 rounded-3xl p-6 min-h-32 flex items-center justify-center">
                   {story.story}
                 </div>
                 <button
-                  onClick={() => speak(story.story, { guide: learner?.voice_guide })}
-                  className="mt-4 inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-stone-100 font-bold"
+                  onClick={() => { unlockAudio(); speak(story.story, { guide }); }}
+                  aria-label="اسمع"
+                  className="mx-auto mt-5 w-20 h-20 rounded-full bg-[var(--color-bedaya-clay)] text-white shadow-md flex items-center justify-center"
                 >
-                  <Volume2 size={18} />
-                  اسمع القصة
+                  <Volume2 size={36} />
                 </button>
                 <button
                   onClick={() => { advance('done'); finish(); }}
-                  className="w-full mt-6 py-4 rounded-2xl bg-[var(--color-bedaya-teal)] text-white font-bold text-lg"
+                  aria-label="خلصت"
+                  className="w-full mt-8 h-20 rounded-3xl bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center"
                 >
-                  أنهيت الدرس
+                  <CheckCircle2 size={44} />
                 </button>
               </>
             )}
@@ -259,20 +259,14 @@ export default function LessonPage() {
         )}
 
         {phase === 'done' && (
-          <motion.div
-            key="done"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center py-16"
-          >
-            <CheckCircle2 size={72} className="mx-auto text-[var(--color-bedaya-success)] mb-4" />
-            <h2 className="font-display text-2xl font-bold">أحسنت</h2>
-            <p className="text-stone-500 mt-2">انتهيت من درس اليوم.</p>
+          <motion.div key="done" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-16">
+            <CheckCircle2 size={88} className="mx-auto text-[var(--color-bedaya-success)] mb-5" />
             <button
               onClick={() => navigate('/home')}
-              className="mt-6 py-3 px-6 rounded-2xl bg-[var(--color-bedaya-teal)] text-white font-bold"
+              aria-label="الرئيسية"
+              className="mx-auto w-24 h-24 rounded-full bg-[var(--color-bedaya-teal)] text-white shadow-lg flex items-center justify-center"
             >
-              العودة للرئيسية
+              <ArrowLeft size={48} className="rotate-180" />
             </button>
           </motion.div>
         )}
@@ -284,7 +278,7 @@ export default function LessonPage() {
 function PhaseDots({ current }) {
   const idx = PHASES.indexOf(current);
   return (
-    <div className="flex justify-center gap-2 mb-8">
+    <div className="flex gap-2">
       {PHASES.slice(0, -1).map((p, i) => (
         <div
           key={p}
