@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/*
+ * Bedaya — adult literacy app.
+ * Visual posture: warm, calm, adult. No cartoons, no Nuri owl, no Nuri palette.
+ * Anchored on stylised ا (alif) — a single confident vertical stroke.
+ */
+
+@theme {
+  --color-bedaya-ink:    #1F2937;   /* near-black for readable Arabic */
+  --color-bedaya-teal:   #0F766E;   /* primary action */
+  --color-bedaya-clay:   #B45309;   /* secondary warmth */
+  --color-bedaya-paper:  #FAF7F2;   /* warm off-white background */
+  --color-bedaya-stone:  #E7E2D8;   /* card surface */
+  --color-bedaya-success:#15803D;
+  --font-family-display: 'Cairo', system-ui, sans-serif;
+  --font-family-script:  'Noto Naskh Arabic', serif;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  font-family: var(--font-family-script);
+  background: var(--color-bedaya-paper);
+  color: var(--color-bedaya-ink);
+  min-height: 100vh;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-family-display);
+}
+
+.alif-mark::before {
+  content: 'ا';
+  font-family: var(--font-family-script);
+  font-weight: 700;
+  color: var(--color-bedaya-teal);
+}

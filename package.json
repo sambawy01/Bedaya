@@ -1,0 +1,12 @@
+{
+  "name": "bedaya",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bedaya — adult literacy app (reading and writing, strictly secular)",
+  "scripts": {
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "migrate": "cd server && npm run migrate",
+    "build": "cd client && npm run build"
+  }
+}
