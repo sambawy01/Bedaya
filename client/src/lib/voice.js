@@ -56,6 +56,23 @@ const LETTER_AUDIO_GLYPHS = new Set([
 const LETTER_AUDIO_BASE = '/audio/letters';
 
 let _audioUnlocked = false;
+// Track the in-flight HTMLAudioElement so a new speak() can stop it before
+// starting fresh. Without this, an auto-fired phase prompt would race with a
+// ListenButton tap and play both clips on top of each other.
+let _currentAudio = null;
+
+function stopAll() {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  if (_currentAudio) {
+    try {
+      _currentAudio.pause();
+      _currentAudio.currentTime = 0;
+    } catch { /* noop */ }
+    _currentAudio = null;
+  }
+}
 
 function loadVoicesOnce() {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -104,7 +121,7 @@ export function unlockAudio() {
  */
 function speakViaTTS(text, guide, rateOverride) {
   if (!window.speechSynthesis || !text) return;
-  window.speechSynthesis.cancel();
+  stopAll();
   const shape = GUIDE_SHAPE[guide] || GUIDE_SHAPE.umm_yasmin;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = 'ar-EG';
@@ -124,7 +141,12 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
   const clip = key && RECORDINGS[key]?.[guide];
   if (clip) {
     try {
+      stopAll();
       const audio = new Audio(clip);
+      _currentAudio = audio;
+      audio.addEventListener('ended', () => {
+        if (_currentAudio === audio) _currentAudio = null;
+      });
       // Fall back to TTS on play rejection (404, decode error, autoplay block)
       // so the learner still gets to hear something instead of silence.
       audio.play().catch(() => speakViaTTS(text, guide, rate));
@@ -136,8 +158,13 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
   // Both guides share the recording since letter names are gender-independent.
   if (typeof text === 'string' && LETTER_AUDIO_GLYPHS.has(text)) {
     try {
+      stopAll();
       const url = `${LETTER_AUDIO_BASE}/${encodeURIComponent(text)}.wav`;
       const audio = new Audio(url);
+      _currentAudio = audio;
+      audio.addEventListener('ended', () => {
+        if (_currentAudio === audio) _currentAudio = null;
+      });
       audio.play().catch(() => speakViaTTS(text, guide, rate));
       return;
     } catch { /* fall through to TTS */ }
@@ -150,7 +177,5 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
 export { GUIDE_SHAPE };
 
 export function stopSpeaking() {
-  if (typeof window !== 'undefined' && window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
+  stopAll();
 }
