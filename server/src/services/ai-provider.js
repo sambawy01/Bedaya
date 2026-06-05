@@ -1,20 +1,61 @@
 /**
- * AI provider switcher for Bedaya.
- * Set AI_PROVIDER=ollama to use a local model; default is Claude.
- * Bedaya only needs chat() — everything else is intentionally absent.
+ * Vercel AI SDK based provider for Bedaya.
+ * Switch by AI_PROVIDER env: 'claude' (default) | 'ollama'.
+ *
+ * Exposes:
+ *   chat(messages, system)            — string in / string out (compat).
+ *   structured(schema, { system, prompt })
+ *                                     — Zod schema in / typed object out.
+ *   model                             — the LanguageModel for direct SDK use.
+ *   getProvider()                     — 'claude' | 'ollama' for boot log.
  */
+const { generateText, generateObject } = require('ai');
+const { createAnthropic } = require('@ai-sdk/anthropic');
+const { createOllama } = require('ollama-ai-provider-v2');
+
 const AI_PROVIDER = (process.env.AI_PROVIDER || 'claude').toLowerCase();
 
-let provider;
+let model;
+let providerLabel;
+
 if (AI_PROVIDER === 'ollama') {
-  provider = require('./ollama');
-  console.log(`[AI] Using Ollama (model: ${provider.OLLAMA_MODEL})`);
+  const baseURL = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/$/, '') + '/api';
+  const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.2';
+  const ollama = createOllama({ baseURL });
+  model = ollama(ollamaModel);
+  providerLabel = `Ollama (model: ${ollamaModel})`;
 } else {
-  provider = require('./claude');
-  console.log('[AI] Using Claude API');
+  const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  model = anthropic('claude-haiku-4-5-20251001');
+  providerLabel = 'Claude API';
+}
+
+console.log(`[AI] Using ${providerLabel}`);
+
+async function chat(messages, system) {
+  const { text } = await generateText({
+    model,
+    system,
+    messages,
+    maxOutputTokens: 1024,
+  });
+  return text;
+}
+
+async function structured(schema, { system, prompt }) {
+  const { object } = await generateObject({
+    model,
+    schema,
+    system,
+    prompt,
+    maxOutputTokens: 1024,
+  });
+  return object;
 }
 
 module.exports = {
-  chat: provider.chat,
+  chat,
+  structured,
+  model,
   getProvider: () => AI_PROVIDER,
 };

@@ -1,6 +1,12 @@
+const { z } = require('zod');
 const pool = require('../db/connection');
 const ai = require('./ai-provider');
 const { nextLetter, letterInfo, orderFor, FREQUENCY_ORDER } = require('./letters');
+
+// Structural schema only — letter-constraint enforcement stays in validateStory().
+const STORY_SCHEMA = z.object({
+  story: z.string().min(3).max(400),
+});
 
 // Hamza/maddah variants are visually distinct but pedagogically equivalent
 // once a learner knows the base letter. We accept all of them when the base
@@ -281,16 +287,16 @@ ${disallowed.join(' ، ')}
 ابدأ مباشرة بالقصة الآن.`;
 
   // Up to 3 attempts. Bedaya is offline-first in production; we tolerate
-  // a fallback when Claude can't satisfy the constraint.
+  // a fallback when the model can't satisfy the constraint.
   let lastStory = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     let story = '';
     try {
-      story = await ai.chat([{ role: 'user', content: prompt }], SECULAR_SYSTEM_PROMPT);
+      const obj = await ai.structured(STORY_SCHEMA, { system: SECULAR_SYSTEM_PROMPT, prompt });
+      story = (obj?.story || '').trim();
     } catch {
       break;
     }
-    story = (story || '').trim();
     lastStory = story;
     const check = validateStory(story, allowed);
     if (check.ok) {
