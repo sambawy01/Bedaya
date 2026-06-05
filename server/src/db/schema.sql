@@ -118,3 +118,23 @@ CREATE INDEX IF NOT EXISTS idx_bedaya_phrases_validated ON bedaya_phrases(valida
 ALTER TABLE bedaya_letter_progress
   ADD COLUMN IF NOT EXISTS letter_id INT REFERENCES bedaya_letters(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_bedaya_progress_letter_id ON bedaya_letter_progress(letter_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- DeepTutor-style dual-layer learner memory
+--
+-- summary  — dated event log appended on session completion: introduced ا,
+--            mastered ب, story read about home. Derived from server-side
+--            observable signals only: no audio, no trace data.
+-- profile  — learner style notes: motivation, preferred topics, pace.
+--            Stays empty in v0; facilitator dashboard (future) writes here.
+--
+-- Both fields are injected into the story generator's system prompt so
+-- generated reading payoffs reference the learner's own progress and style.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS bedaya_learner_memory (
+  learner_id INT PRIMARY KEY REFERENCES bedaya_learners(id) ON DELETE CASCADE,
+  summary TEXT NOT NULL DEFAULT '',
+  profile TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMP DEFAULT NOW()
+);

@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const pool = require('../db/connection');
 const ai = require('./ai-provider');
+const memory = require('./learner-memory');
 const { nextLetter, letterInfo, orderFor, FREQUENCY_ORDER } = require('./letters');
 
 // Structural schema only — letter-constraint enforcement stays in validateStory().
@@ -116,18 +117,26 @@ async function planLesson(learnerId) {
  */
 async function startSession(learnerId, letter) {
   // Ensure the letter has a progress row so future steps can update it.
-  // letter_id is resolved from the canonical letters table — when seeded.
+  // letter_id resolved from the canonical letters table — when seeded.
   // Cast $2 explicitly: Postgres can't unify text vs varchar across both uses.
-  await pool.query(
+  // RETURNING (xmax = 0) tells us whether THIS call actually inserted, so we
+  // log the introduction event to memory exactly once per letter per learner.
+  const insert = await pool.query(
     `INSERT INTO bedaya_letter_progress (learner_id, letter, letter_id, status)
      VALUES ($1, $2::varchar, (SELECT id FROM bedaya_letters WHERE glyph = $2::varchar), 'introduced')
-     ON CONFLICT (learner_id, letter) DO NOTHING`,
+     ON CONFLICT (learner_id, letter) DO NOTHING
+     RETURNING (xmax = 0) AS inserted`,
     [learnerId, letter]
   );
+  const justIntroduced = insert.rows[0]?.inserted === true;
+
   const result = await pool.query(
     `INSERT INTO bedaya_sessions (learner_id, letter) VALUES ($1, $2) RETURNING id, started_at`,
     [learnerId, letter]
   );
+  if (justIntroduced) {
+    await memory.appendSummaryLine(learnerId, `تم تعريف حرف ${letter}`);
+  }
   return result.rows[0];
 }
 
@@ -170,6 +179,9 @@ async function completeSession(sessionId, { masterLetter } = {}) {
         WHERE learner_id = $1 AND letter = $2`,
       [learner_id, letter]
     );
+    await memory.appendSummaryLine(learner_id, `إتقان حرف ${letter}`);
+  } else {
+    await memory.appendSummaryLine(learner_id, `إكمال جلسة على حرف ${letter}`);
   }
 
   await pool.query(
@@ -288,13 +300,21 @@ ${disallowed.join(' ، ')}
 
 ابدأ مباشرة بالقصة الآن.`;
 
+  // Prepend learner memory so the story can echo their progress and topics.
+  // Empty memory layers contribute nothing — the secular contract stays first.
+  const mem = await memory.getMemory(learnerId);
+  const memBlock = memory.renderForPrompt(mem);
+  const system = memBlock
+    ? `${SECULAR_SYSTEM_PROMPT}\n\n${memBlock}`
+    : SECULAR_SYSTEM_PROMPT;
+
   // Up to 3 attempts. Bedaya is offline-first in production; we tolerate
   // a fallback when the model can't satisfy the constraint.
   let lastStory = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     let story = '';
     try {
-      const obj = await ai.structured(STORY_SCHEMA, { system: SECULAR_SYSTEM_PROMPT, prompt });
+      const obj = await ai.structured(STORY_SCHEMA, { system, prompt });
       story = (obj?.story || '').trim();
     } catch {
       break;
