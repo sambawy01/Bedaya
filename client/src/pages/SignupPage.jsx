@@ -64,7 +64,7 @@ export default function SignupPage() {
       login(learner);
       navigate('/home', { replace: true });
     } catch {
-      speak('حصل خطأ صغير. حاول تاني.', { guide: picked || guide });
+      speak({ key: 'error_signup', text: 'حصل خطأ صغير. حاول تاني.' }, { guide: picked || guide });
       setSaving(false);
     }
   }

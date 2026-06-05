@@ -72,24 +72,27 @@ export default function LessonPage() {
     return (plan.warmup || []).map((g) => ({ glyph: g, letterId: null }));
   }, [plan]);
 
-  // Build the spoken instruction for the current phase.
+  // Build the spoken instruction for the current phase. Returns { key, text }
+  // so speak() can pick the pre-recorded Edge TTS clip (ar-EG-Salma/Shakir)
+  // for static lines. Phonics is dynamic (letter name interpolated) so it
+  // falls through to browser TTS — the letter name itself is the Antura clip.
   const phaseLine = useCallback(() => {
     switch (phase) {
       case 'warmup':
-        return 'دي الحروف اللي عرفتها. دوس على أي حرف عشان تسمعه. بعدين دوس الزرار الأخضر عشان نكمل.';
+        return { key: 'phase_warmup', text: 'دي الحروف اللي عرفتها. دوس على أي حرف عشان تسمعه. بعدين دوس الزرار الأخضر عشان نكمل.' };
       case 'phonics':
-        return newLetter ? `ده حرف جديد. اسمه ${newLetter.name}. دوس على الزرار البرتقالي عشان تسمعه.` : '';
+        return newLetter ? { text: `ده حرف جديد. اسمه ${newLetter.name}. دوس على الزرار البرتقالي عشان تسمعه.` } : '';
       case 'trace':
-        return 'دلوقتي اكتب الحرف بإصبعك فوق الخط.';
+        return { key: 'phase_trace', text: 'دلوقتي اكتب الحرف بإصبعك فوق الخط.' };
       case 'story':
-        if (!story) return 'لحظة صغيرة.';
+        if (!story) return { key: 'phase_story_loading', text: 'لحظة صغيرة.' };
         return story.mode === 'words'
-          ? 'دي كلمات فيها بس الحروف اللي عرفتها. دوس عليها عشان تسمعها.'
+          ? { key: 'phase_story_words', text: 'دي كلمات فيها بس الحروف اللي عرفتها. دوس عليها عشان تسمعها.' }
           : story.mode === 'letters'
-          ? 'برافو! ده أول حرف. الكلمات هتيجي بعد حروف أكتر.'
-          : 'دي قصة قصيرة. دوس عشان تسمعها.';
+          ? { key: 'phase_story_letters', text: 'برافو! ده أول حرف. الكلمات هتيجي بعد حروف أكتر.' }
+          : { key: 'phase_story_normal', text: 'دي قصة قصيرة. دوس عشان تسمعها.' };
       case 'done':
-        return 'برافو عليك! خلّصت درس النهاردة.';
+        return { key: 'phase_done', text: 'برافو عليك! خلّصت درس النهاردة.' };
       default:
         return '';
     }
@@ -160,7 +163,7 @@ export default function LessonPage() {
   if (error) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-4">
-        <ListenButton line="حصل خطأ. ارجع للرئيسية." size="lg" />
+        <ListenButton line={{ key: 'error_lesson', text: 'حصل خطأ. ارجع للرئيسية.' }} size="lg" />
         <button
           onClick={() => navigate('/home')}
           className="w-16 h-16 rounded-full bg-[var(--color-bedaya-teal)] text-white flex items-center justify-center"
