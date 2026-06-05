@@ -44,30 +44,31 @@ const VOICES = {
   amm_hassan: 'ar-EG-ShakirNeural',
 };
 
-// Phrase keys map to the strings the app speaks. Values follow the same Arabic
-// the existing code uses verbatim — copying drift would desync the audio from
-// the rest of the UI. Keys are referenced by RECORDINGS in client/src/lib/voice.js.
+// Phrase keys map to the strings the app speaks. Each value is fully tashkeel-
+// diacritized so ar-EG-SalmaNeural / ar-EG-ShakirNeural pronounce the ECA
+// colloquial words correctly (دُوس not دَوْس, نِكَمِّل not نُكْمِل, etc.). The
+// underlying UI text stays unvocalized; only the TTS source carries harakat.
 const PHRASES = {
-  welcome:               'أهلاً بيك. هنا هنتعلّم نقرا ونكتب مع بعض. دوس على الزرار الكبير عشان نبدأ.',
-  pick_guide:            'اختار الصوت اللي يعجبك. دوس على الصورة عشان تسمعه.',
-  say_name:              'دلوقتي قول اسمك. دوس على الزرار وقول اسمك.',
-  home_lesson:           'درس النهاردة جاهز. دوس على الزرار الكبير عشان نبدأ.',
-  home_done:             'برافو عليك. خلّصت كل الحروف.',
-  phase_warmup:          'دي الحروف اللي عرفتها. دوس على أي حرف عشان تسمعه. بعدين دوس الزرار الأخضر عشان نكمل.',
-  phase_trace:           'دلوقتي اكتب الحرف بإصبعك فوق الخط.',
-  phase_story_words:     'دي كلمات فيها بس الحروف اللي عرفتها. دوس عليها عشان تسمعها.',
-  phase_story_letters:   'برافو! ده أول حرف. الكلمات هتيجي بعد حروف أكتر.',
-  phase_story_normal:    'دي قصة قصيرة. دوس عشان تسمعها.',
-  phase_story_loading:   'لحظة صغيرة.',
-  phase_done:            'برافو عليك! خلّصت درس النهاردة.',
-  error_signup:          'حصل خطأ صغير. حاول تاني.',
-  error_lesson:          'حصل خطأ. ارجع للرئيسية.',
+  welcome:               'أَهلاً بِيك. هِنا هَنِتعَلِّم نِقْرا وَنِكْتِب مَعَ بَعض. دُوس عَلَى الزُّرار الكِبير عَشان نِبدَأ.',
+  pick_guide:            'اِخْتار الصَّوت اللِّي يِعْجِبَك. دُوس عَلَى الصُّورة عَشان تِسْمَعُه.',
+  say_name:              'دِلْوَقتي قُول اِسْمَك. دُوس عَلَى الزُّرار وَقُول اِسْمَك.',
+  home_lesson:           'دَرس النَّهارْدا جاهِز. دُوس عَلَى الزُّرار الكِبير عَشان نِبدَأ.',
+  home_done:             'بْرافو عَلِيك. خَلَّصْت كُلّ الحُرُوف.',
+  phase_warmup:          'دِي الحُرُوف اللِّي عَرَفْتِها. دُوس عَلَى أَيّ حَرف عَشان تِسْمَعُه. بَعدِين دُوس الزُّرار الأَخْضَر عَشان نِكَمِّل.',
+  phase_trace:           'دِلْوَقتي اِكْتِب الحَرف بِإِصْبَعَك فُوق الخَطّ.',
+  phase_story_words:     'دِي كِلْمات فِيها بَسّ الحُرُوف اللِّي عَرَفْتِها. دُوس عَلِيها عَشان تِسْمَعها.',
+  phase_story_letters:   'بْرافو! دَه أَوِّل حَرف. الكِلْمات هَتِيجي بَعد حُرُوف أَكْتَر.',
+  phase_story_normal:    'دِي قِصَّة قُصَيَّرة. دُوس عَشان تِسْمَعها.',
+  phase_story_loading:   'لَحْظة صُغَيَّرة.',
+  phase_done:            'بْرافو عَلِيك! خَلَّصْت دَرس النَّهارْدا.',
+  error_signup:          'حَصَل خَطَأ صُغَيَّر. حاوِل تاني.',
+  error_lesson:          'حَصَل خَطَأ. اِرْجَع لِلرَّئيسِيَّة.',
 };
 
 // Voice samples — each only generated in its OWN voice (the sample IS that voice).
 const SAMPLES = {
-  sample_umm_yasmin: { voice: 'umm_yasmin', text: 'أنا أم ياسمين، هكون معاك في كل خطوة.' },
-  sample_amm_hassan: { voice: 'amm_hassan', text: 'أنا عم حسن، هتعلّم معايا براحتك.' },
+  sample_umm_yasmin: { voice: 'umm_yasmin', text: 'أَنا أُمّ ياسْمين، هَكُون مَعاك في كُلّ خَطْوة.' },
+  sample_amm_hassan: { voice: 'amm_hassan', text: 'أَنا عَمّ حَسَن، هَتِتْعَلِّم مَعايا بِراحْتَك.' },
 };
 
 async function synthesize(voiceId, text, destPath) {
