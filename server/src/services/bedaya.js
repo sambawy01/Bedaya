@@ -116,9 +116,11 @@ async function planLesson(learnerId) {
  */
 async function startSession(learnerId, letter) {
   // Ensure the letter has a progress row so future steps can update it.
+  // letter_id is resolved from the canonical letters table — when seeded.
+  // Cast $2 explicitly: Postgres can't unify text vs varchar across both uses.
   await pool.query(
-    `INSERT INTO bedaya_letter_progress (learner_id, letter, status)
-     VALUES ($1, $2, 'introduced')
+    `INSERT INTO bedaya_letter_progress (learner_id, letter, letter_id, status)
+     VALUES ($1, $2::varchar, (SELECT id FROM bedaya_letters WHERE glyph = $2::varchar), 'introduced')
      ON CONFLICT (learner_id, letter) DO NOTHING`,
     [learnerId, letter]
   );

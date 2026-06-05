@@ -58,3 +58,63 @@ CREATE TABLE IF NOT EXISTS bedaya_story_history (
   created_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_bedaya_story_learner ON bedaya_story_history(learner_id, created_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Antura-style letter data model
+--
+-- Foundation for FSRS scheduling (Task 5), BKT mastery (Task 8), and the
+-- DeepTutor memory layer (Task 7). Letters get stable INT IDs that downstream
+-- learner-state tables reference by FK, replacing the legacy glyph string.
+-- Contextual letter forms (initial/medial/final) and pre-validated words and
+-- phrases get their own tables so offline lesson content can be authored once
+-- and queried by allowed-letter-set.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS bedaya_letters (
+  id SERIAL PRIMARY KEY,
+  glyph VARCHAR(4) UNIQUE NOT NULL,
+  name_ar VARCHAR(20) NOT NULL,
+  name_romanised VARCHAR(30) NOT NULL,
+  sound VARCHAR(8) NOT NULL,
+  letter_type VARCHAR(16) NOT NULL DEFAULT 'consonant'
+    CHECK (letter_type IN ('consonant', 'vowel', 'symbol')),
+  sort_id INT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_bedaya_letters_sort ON bedaya_letters(sort_id);
+
+CREATE TABLE IF NOT EXISTS bedaya_letter_forms (
+  id SERIAL PRIMARY KEY,
+  letter_id INT NOT NULL REFERENCES bedaya_letters(id) ON DELETE CASCADE,
+  position VARCHAR(10) NOT NULL
+    CHECK (position IN ('isolated', 'initial', 'medial', 'final')),
+  glyph_form VARCHAR(8) NOT NULL,
+  diacritic VARCHAR(10) NOT NULL DEFAULT 'none'
+    CHECK (diacritic IN ('none', 'fathah', 'dammah', 'kasrah', 'sukun', 'shaddah')),
+  UNIQUE(letter_id, position, diacritic)
+);
+
+CREATE TABLE IF NOT EXISTS bedaya_words (
+  id SERIAL PRIMARY KEY,
+  word VARCHAR(40) UNIQUE NOT NULL,
+  primary_letter_id INT REFERENCES bedaya_letters(id) ON DELETE SET NULL,
+  theme VARCHAR(30),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_bedaya_words_letter ON bedaya_words(primary_letter_id);
+
+CREATE TABLE IF NOT EXISTS bedaya_phrases (
+  id SERIAL PRIMARY KEY,
+  phrase TEXT NOT NULL,
+  letter_ids INT[] NOT NULL,
+  theme VARCHAR(30),
+  validated BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_bedaya_phrases_validated ON bedaya_phrases(validated);
+
+-- Additive FK on existing progress table. The legacy `letter` glyph column
+-- stays during migration so reads keep working until backfill completes.
+ALTER TABLE bedaya_letter_progress
+  ADD COLUMN IF NOT EXISTS letter_id INT REFERENCES bedaya_letters(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_bedaya_progress_letter_id ON bedaya_letter_progress(letter_id);
