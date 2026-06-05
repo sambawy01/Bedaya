@@ -148,8 +148,11 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
         if (_currentAudio === audio) _currentAudio = null;
       });
       // Fall back to TTS on play rejection (404, decode error, autoplay block)
-      // so the learner still gets to hear something instead of silence.
-      audio.play().catch(() => speakViaTTS(text, guide, rate));
+      // — but ONLY if we're still the active audio. A subsequent speak() call
+      // legitimately aborts us via stopAll() and we must NOT resurrect as TTS.
+      audio.play().catch(() => {
+        if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+      });
       return;
     } catch { /* fall through to TTS */ }
   }
@@ -165,7 +168,9 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
       audio.addEventListener('ended', () => {
         if (_currentAudio === audio) _currentAudio = null;
       });
-      audio.play().catch(() => speakViaTTS(text, guide, rate));
+      audio.play().catch(() => {
+        if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+      });
       return;
     } catch { /* fall through to TTS */ }
   }
