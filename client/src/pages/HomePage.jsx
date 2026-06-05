@@ -117,22 +117,30 @@ export default function HomePage() {
         )}
       </motion.div>
 
-      {plan?.warmup?.length > 0 && (
-        <div className="bg-white rounded-3xl border-2 border-stone-100 p-5">
-          <div className="flex flex-wrap gap-2 justify-center">
-            {plan.warmup.map((g) => (
-              <button
-                key={g}
-                onClick={() => { unlockAudio(); speak(g, { guide }); }}
-                className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center font-script text-2xl font-bold text-[var(--color-bedaya-teal)]"
-                aria-label={`الحرف ${g}`}
-              >
-                {g}
-              </button>
-            ))}
+      {(() => {
+        // Prefer the FSRS-selected warm-up; fall back to the legacy full
+        // known-letters list. Same data shape either way for the JSX below.
+        const items = (plan?.warmupScheduled && plan.warmupScheduled.length > 0)
+          ? plan.warmupScheduled.map((w) => w.glyph)
+          : (plan?.warmup || []);
+        if (items.length === 0) return null;
+        return (
+          <div className="bg-white rounded-3xl border-2 border-stone-100 p-5">
+            <div className="flex flex-wrap gap-2 justify-center">
+              {items.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => { unlockAudio(); speak(g, { guide }); }}
+                  className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center font-script text-2xl font-bold text-[var(--color-bedaya-teal)]"
+                  aria-label={`الحرف ${g}`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

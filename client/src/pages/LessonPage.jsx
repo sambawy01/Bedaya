@@ -38,7 +38,11 @@ export default function LessonPage() {
         if (cancelled) return;
         setPlan(p);
         setSessionId(sess.id);
-        setPhase(p.warmup.length === 0 ? 'phonics' : 'warmup');
+        // Skip warm-up when nothing's due — FSRS may legitimately return an
+        // empty set on first-day-back or for a brand-new learner.
+        const hasWarmup = (p.warmupScheduled && p.warmupScheduled.length > 0)
+          || (p.warmup && p.warmup.length > 0);
+        setPhase(hasWarmup ? 'warmup' : 'phonics');
       } catch (e) {
         if (!cancelled) setError(e.message || 'حدث خطأ');
       }
@@ -48,6 +52,15 @@ export default function LessonPage() {
   }, [learner]);
 
   const newLetter = plan?.newLetter;
+  // Prefer the FSRS-selected warm-up queue; fall back to the legacy
+  // full-known-letters list for older clients or empty schedules. Items are
+  // normalized to { glyph, letterId } so the warm-up grid and the phase POST
+  // share the same shape.
+  const warmupItems = plan
+    ? (plan.warmupScheduled && plan.warmupScheduled.length > 0
+        ? plan.warmupScheduled.map((w) => ({ glyph: w.glyph, letterId: w.letterId }))
+        : (plan.warmup || []).map((g) => ({ glyph: g, letterId: null })))
+    : [];
 
   // Build the spoken instruction for the current phase.
   const phaseLine = useCallback(() => {
@@ -93,10 +106,18 @@ export default function LessonPage() {
   const advance = useCallback((next) => {
     unlockAudio();
     if (sessionId && (phase === 'warmup' || phase === 'phonics' || phase === 'story')) {
-      api('/lessons/phase', { method: 'POST', body: { sessionId, phase } }).catch(() => {});
+      // Pass letterIds when leaving warm-up so the server rates the FSRS
+      // cards for each reviewed letter. Phonics and story phases don't
+      // carry per-letter IDs — they signal BKT mastery for the focus letter.
+      const body = { sessionId, phase };
+      if (phase === 'warmup') {
+        const letterIds = warmupItems.map((w) => w.letterId).filter((id) => id != null);
+        if (letterIds.length > 0) body.letterIds = letterIds;
+      }
+      api('/lessons/phase', { method: 'POST', body }).catch(() => {});
     }
     setPhase(next);
-  }, [sessionId, phase]);
+  }, [sessionId, phase, warmupItems]);
 
   async function loadStory() {
     if (!learner) return;
@@ -116,8 +137,10 @@ export default function LessonPage() {
   async function finish() {
     if (!sessionId) { navigate('/home'); return; }
     try {
+      // BKT decides mastery from the trace + phonics + story signals fed
+      // during this session — no explicit masterLetter override.
       const result = await api('/lessons/complete', {
-        method: 'POST', body: { sessionId, masterLetter: true },
+        method: 'POST', body: { sessionId },
       });
       if (result?.learner) setLearner(result.learner);
     } catch { /* best-effort */ }
@@ -161,14 +184,14 @@ export default function LessonPage() {
         {phase === 'warmup' && (
           <motion.div key="warmup" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <div className="grid grid-cols-4 gap-3 mb-10">
-              {plan.warmup.map((g) => (
+              {warmupItems.map(({ glyph }) => (
                 <button
-                  key={g}
-                  onClick={() => { unlockAudio(); speak(g, { guide }); }}
+                  key={glyph}
+                  onClick={() => { unlockAudio(); speak(glyph, { guide }); }}
                   className="aspect-square rounded-2xl bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center font-script text-3xl font-bold text-[var(--color-bedaya-teal)]"
-                  aria-label={`الحرف ${g}`}
+                  aria-label={`الحرف ${glyph}`}
                 >
-                  {g}
+                  {glyph}
                 </button>
               ))}
             </div>
