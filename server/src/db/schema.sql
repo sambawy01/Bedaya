@@ -170,3 +170,17 @@ ALTER TABLE bedaya_letter_fsrs
   ALTER COLUMN due TYPE TIMESTAMPTZ USING due AT TIME ZONE 'UTC';
 ALTER TABLE bedaya_letter_fsrs
   ALTER COLUMN last_review TYPE TIMESTAMPTZ USING last_review AT TIME ZONE 'UTC';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Bayesian Knowledge Tracing — replaces the heuristic "facilitator decides
+-- mastery" path with a probabilistic latent-skill estimate per letter.
+-- p_mastered starts at the L0 prior (0.1) and updates on every observable
+-- signal (trace, phonics, story). The session loop promotes a letter to
+-- mastered when p_mastered crosses MASTERY_THRESHOLD and enough reps have
+-- accumulated so we don't promote off a single lucky observation.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+ALTER TABLE bedaya_letter_progress
+  ADD COLUMN IF NOT EXISTS p_mastered DOUBLE PRECISION NOT NULL DEFAULT 0.1;
+ALTER TABLE bedaya_letter_progress
+  ADD COLUMN IF NOT EXISTS bkt_reps INT NOT NULL DEFAULT 0;

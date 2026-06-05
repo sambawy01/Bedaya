@@ -3,6 +3,7 @@ const pool = require('../db/connection');
 const ai = require('./ai-provider');
 const memory = require('./learner-memory');
 const scheduler = require('./scheduler');
+const mastery = require('./mastery');
 const { nextLetter, letterInfo, orderFor, FREQUENCY_ORDER } = require('./letters');
 
 // Structural schema only — letter-constraint enforcement stays in validateStory().
@@ -163,16 +164,22 @@ async function markPhase(sessionId, phase, options = {}) {
   if (!col) throw new Error('invalid phase');
   await pool.query(`UPDATE bedaya_sessions SET ${col} = TRUE WHERE id = $1`, [sessionId]);
 
-  // When the warm-up phase completes and the client supplied which letters
-  // were reviewed, rate each card Good so the FSRS schedule moves forward.
+  const sess = await pool.query(
+    `SELECT learner_id, letter FROM bedaya_sessions WHERE id = $1`,
+    [sessionId]
+  );
+  const { learner_id: learnerId, letter } = sess.rows[0] || {};
+  if (!learnerId) return;
+
+  // Phase-completion is a positive BKT signal for the lesson's focus letter.
+  // Warm-up taps signal review confidence for previously-reviewed letters;
+  // phonics/story signal mastery of the new letter being introduced.
   if (phase === 'warmup' && Array.isArray(options.letterIds) && options.letterIds.length > 0) {
-    const sess = await pool.query(
-      `SELECT learner_id FROM bedaya_sessions WHERE id = $1`,
-      [sessionId]
-    );
-    const learnerId = sess.rows[0]?.learner_id;
-    if (learnerId) {
-      await scheduler.ratePhaseComplete(learnerId, options.letterIds, 'good');
+    await scheduler.ratePhaseComplete(learnerId, options.letterIds, 'good');
+  } else if ((phase === 'phonics' || phase === 'story') && letter) {
+    const result = await mastery.recordSignal(learnerId, letter, true);
+    if (result.justMastered) {
+      await memory.appendSummaryLine(learnerId, `إتقان حرف ${letter} (تلقائي)`);
     }
   }
 }
@@ -185,6 +192,13 @@ async function recordTrace(learnerId, letter) {
       WHERE learner_id = $1 AND letter = $2`,
     [learnerId, letter]
   );
+  // Each completed trace is a positive BKT signal — the learner produced
+  // the letter shape end-to-end. Auto-promotion to mastered is gated by
+  // threshold + min-reps inside recordSignal.
+  const result = await mastery.recordSignal(learnerId, letter, true);
+  if (result.justMastered) {
+    await memory.appendSummaryLine(learnerId, `إتقان حرف ${letter} (تلقائي)`);
+  }
 }
 
 async function completeSession(sessionId, { masterLetter } = {}) {
