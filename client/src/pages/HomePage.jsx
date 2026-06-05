@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogOut, ArrowLeft, CheckCircle2, Volume2 } from 'lucide-react';
@@ -29,6 +29,17 @@ export default function HomePage() {
       .catch(() => setPlan(null))
       .finally(() => setLoadingPlan(false));
   }, [learner]);
+
+  // Prefer the FSRS-selected warm-up queue when populated; fall back to the
+  // legacy full known-letters list. Mirrors the LessonPage normalization so
+  // both screens render the same set of glyphs.
+  const warmupGlyphs = useMemo(() => {
+    if (!plan) return [];
+    if (plan.warmupScheduled && plan.warmupScheduled.length > 0) {
+      return plan.warmupScheduled.map((w) => w.glyph);
+    }
+    return plan.warmup || [];
+  }, [plan]);
 
   // Greet by playing the learner's own recorded name, then the lesson prompt.
   const prompt = plan?.complete
@@ -117,30 +128,22 @@ export default function HomePage() {
         )}
       </motion.div>
 
-      {(() => {
-        // Prefer the FSRS-selected warm-up; fall back to the legacy full
-        // known-letters list. Same data shape either way for the JSX below.
-        const items = (plan?.warmupScheduled && plan.warmupScheduled.length > 0)
-          ? plan.warmupScheduled.map((w) => w.glyph)
-          : (plan?.warmup || []);
-        if (items.length === 0) return null;
-        return (
-          <div className="bg-white rounded-3xl border-2 border-stone-100 p-5">
-            <div className="flex flex-wrap gap-2 justify-center">
-              {items.map((g) => (
-                <button
-                  key={g}
-                  onClick={() => { unlockAudio(); speak(g, { guide }); }}
-                  className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center font-script text-2xl font-bold text-[var(--color-bedaya-teal)]"
-                  aria-label={`الحرف ${g}`}
-                >
-                  {g}
-                </button>
-              ))}
-            </div>
+      {warmupGlyphs.length > 0 && (
+        <div className="bg-white rounded-3xl border-2 border-stone-100 p-5">
+          <div className="flex flex-wrap gap-2 justify-center">
+            {warmupGlyphs.map((g) => (
+              <button
+                key={g}
+                onClick={() => { unlockAudio(); speak(g, { guide }); }}
+                className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center font-script text-2xl font-bold text-[var(--color-bedaya-teal)]"
+                aria-label={`الحرف ${g}`}
+              >
+                {g}
+              </button>
+            ))}
           </div>
-        );
-      })()}
+        </div>
+      )}
     </div>
   );
 }

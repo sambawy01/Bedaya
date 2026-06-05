@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Volume2, ArrowLeft, CheckCircle2, Home } from 'lucide-react';
@@ -22,9 +22,16 @@ export default function LessonPage() {
   const [storyLoading, setStoryLoading] = useState(false);
   const [error, setError] = useState(null);
   const spokenPhase = useRef(null);
+  // StrictMode double-invokes effects in dev; without a guard the
+  // POST /lessons/start fires twice and orphans the first session row in
+  // bedaya_sessions. Dedupe by learner.id — a real re-mount with a
+  // different learner correctly re-runs the start path.
+  const startedFor = useRef(null);
 
   useEffect(() => {
     if (!learner) { navigate('/', { replace: true }); return; }
+    if (startedFor.current === learner.id) return;
+    startedFor.current = learner.id;
     let cancelled = false;
     (async () => {
       try {
@@ -55,12 +62,15 @@ export default function LessonPage() {
   // Prefer the FSRS-selected warm-up queue; fall back to the legacy
   // full-known-letters list for older clients or empty schedules. Items are
   // normalized to { glyph, letterId } so the warm-up grid and the phase POST
-  // share the same shape.
-  const warmupItems = plan
-    ? (plan.warmupScheduled && plan.warmupScheduled.length > 0
-        ? plan.warmupScheduled.map((w) => ({ glyph: w.glyph, letterId: w.letterId }))
-        : (plan.warmup || []).map((g) => ({ glyph: g, letterId: null })))
-    : [];
+  // share the same shape. Memoized on `plan` so `advance`'s useCallback is
+  // meaningful — without this the dep changes every render.
+  const warmupItems = useMemo(() => {
+    if (!plan) return [];
+    if (plan.warmupScheduled && plan.warmupScheduled.length > 0) {
+      return plan.warmupScheduled.map((w) => ({ glyph: w.glyph, letterId: w.letterId }));
+    }
+    return (plan.warmup || []).map((g) => ({ glyph: g, letterId: null }));
+  }, [plan]);
 
   // Build the spoken instruction for the current phase.
   const phaseLine = useCallback(() => {
