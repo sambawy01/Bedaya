@@ -50,14 +50,16 @@ router.post('/lessons/start', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/bedaya/lessons/phase — { sessionId, phase }
+// POST /api/bedaya/lessons/phase — { sessionId, phase, letterIds? }
+// letterIds is optional and only consumed for phase === 'warmup' to rate
+// the FSRS cards that were reviewed in the panel.
 router.post('/lessons/phase', async (req, res, next) => {
   try {
-    const { sessionId, phase } = req.body || {};
+    const { sessionId, phase, letterIds } = req.body || {};
     if (!sessionId || !phase) {
       return res.status(400).json({ success: false, error: 'sessionId and phase required' });
     }
-    await bedaya.markPhase(sessionId, phase);
+    await bedaya.markPhase(sessionId, phase, { letterIds });
     res.json({ success: true, data: { ok: true } });
   } catch (err) { next(err); }
 });

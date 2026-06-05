@@ -138,3 +138,35 @@ CREATE TABLE IF NOT EXISTS bedaya_learner_memory (
   profile TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- FSRS-6 spaced-repetition card state per (learner, letter).
+-- Drives the warm-up scheduler: letters with the earliest `due` timestamp get
+-- surfaced first, so reviews track each learner's actual forgetting curve
+-- instead of replaying the full known-letters list every session.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- due / last_review are TIMESTAMPTZ so cross-timezone comparisons against
+-- NOW() are unambiguous. The other tables use TIMESTAMP for historical
+-- reasons; only the scheduler depends on accurate time math.
+CREATE TABLE IF NOT EXISTS bedaya_letter_fsrs (
+  learner_id INT NOT NULL REFERENCES bedaya_learners(id) ON DELETE CASCADE,
+  letter_id INT NOT NULL REFERENCES bedaya_letters(id) ON DELETE CASCADE,
+  due TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  stability DOUBLE PRECISION NOT NULL DEFAULT 0,
+  difficulty DOUBLE PRECISION NOT NULL DEFAULT 0,
+  elapsed_days INT NOT NULL DEFAULT 0,
+  scheduled_days INT NOT NULL DEFAULT 0,
+  reps INT NOT NULL DEFAULT 0,
+  lapses INT NOT NULL DEFAULT 0,
+  state INT NOT NULL DEFAULT 0, -- 0 New, 1 Learning, 2 Review, 3 Relearning
+  last_review TIMESTAMPTZ,
+  PRIMARY KEY (learner_id, letter_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bedaya_fsrs_due ON bedaya_letter_fsrs(learner_id, due);
+
+-- Idempotent type coercion if the table existed pre-fix.
+ALTER TABLE bedaya_letter_fsrs
+  ALTER COLUMN due TYPE TIMESTAMPTZ USING due AT TIME ZONE 'UTC';
+ALTER TABLE bedaya_letter_fsrs
+  ALTER COLUMN last_review TYPE TIMESTAMPTZ USING last_review AT TIME ZONE 'UTC';
