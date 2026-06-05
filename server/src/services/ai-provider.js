@@ -21,9 +21,14 @@ let providerLabel;
 if (AI_PROVIDER === 'ollama') {
   const baseURL = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/$/, '') + '/api';
   const ollamaModel = process.env.OLLAMA_MODEL || 'llama3.2';
-  const ollama = createOllama({ baseURL });
+  // OLLAMA_API_KEY is required for Ollama Cloud (https://ollama.com), unused
+  // for local self-hosted Ollama. When set, sent as a Bearer header.
+  const headers = process.env.OLLAMA_API_KEY
+    ? { Authorization: `Bearer ${process.env.OLLAMA_API_KEY}` }
+    : undefined;
+  const ollama = createOllama({ baseURL, headers });
   model = ollama(ollamaModel);
-  providerLabel = `Ollama (model: ${ollamaModel})`;
+  providerLabel = `Ollama (model: ${ollamaModel}${headers ? ', cloud' : ', local'})`;
 } else {
   const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   model = anthropic('claude-haiku-4-5-20251001');
