@@ -16,6 +16,14 @@ const GUIDE_GENDER = {
   amm_hassan: 'male',
 };
 
+// Browsers commonly ship a single Arabic voice (macOS: Maged), so pickVoice
+// returns the same voice for both guides. We shape pitch + rate per guide so
+// they remain perceptibly distinct even when the underlying voice is identical.
+const GUIDE_SHAPE = {
+  umm_yasmin: { pitch: 1.35, rate: 0.74 }, // higher, slightly faster — warmer female register
+  amm_hassan: { pitch: 0.78, rate: 0.66 }, // lower, slightly slower — older male register
+};
+
 // When real recordings exist, map key -> { umm_yasmin: url, amm_hassan: url }.
 // Empty for now; TTS is the fallback.
 const RECORDINGS = {};
@@ -76,19 +84,20 @@ export function unlockAudio() {
  *   speak('مرحبا', { guide })
  *   speak({ key: 'welcome', text: 'مرحبا' }, { guide })
  */
-function speakViaTTS(text, guide, rate) {
+function speakViaTTS(text, guide, rateOverride) {
   if (!window.speechSynthesis || !text) return;
   window.speechSynthesis.cancel();
+  const shape = GUIDE_SHAPE[guide] || GUIDE_SHAPE.umm_yasmin;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = 'ar-EG';
-  utter.rate = rate;
-  utter.pitch = 1;
+  utter.rate = rateOverride ?? shape.rate;
+  utter.pitch = shape.pitch;
   const v = pickVoice(GUIDE_GENDER[guide] || 'female');
   if (v) utter.voice = v;
   window.speechSynthesis.speak(utter);
 }
 
-export function speak(input, { guide = 'umm_yasmin', rate = 0.72 } = {}) {
+export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
   if (typeof window === 'undefined') return;
 
   const key = typeof input === 'object' && input ? input.key : null;
@@ -116,6 +125,9 @@ export function speak(input, { guide = 'umm_yasmin', rate = 0.72 } = {}) {
 
   speakViaTTS(text, guide, rate);
 }
+
+// Exposed for ListenButton or anything that wants the shape rendered uniformly.
+export { GUIDE_SHAPE };
 
 export function stopSpeaking() {
   if (typeof window !== 'undefined' && window.speechSynthesis) {
