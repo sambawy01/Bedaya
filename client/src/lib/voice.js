@@ -20,6 +20,15 @@ const GUIDE_GENDER = {
 // Empty for now; TTS is the fallback.
 const RECORDINGS = {};
 
+// Antura MSA letter-name recordings (vgwb/Antura, CC-BY 4.0, see CREDITS.md).
+// Letter names are gender-independent — one recording serves both guides.
+const LETTER_AUDIO_GLYPHS = new Set([
+  'ا','ب','ت','ث','ج','ح','خ','د','ذ','ر',
+  'ز','س','ش','ص','ض','ط','ظ','ع','غ','ف',
+  'ق','ك','ل','م','ن','ه','و','ي','ة','ء',
+]);
+const LETTER_AUDIO_BASE = '/audio/letters';
+
 let _audioUnlocked = false;
 
 function loadVoicesOnce() {
@@ -67,6 +76,18 @@ export function unlockAudio() {
  *   speak('مرحبا', { guide })
  *   speak({ key: 'welcome', text: 'مرحبا' }, { guide })
  */
+function speakViaTTS(text, guide, rate) {
+  if (!window.speechSynthesis || !text) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'ar-EG';
+  utter.rate = rate;
+  utter.pitch = 1;
+  const v = pickVoice(GUIDE_GENDER[guide] || 'female');
+  if (v) utter.voice = v;
+  window.speechSynthesis.speak(utter);
+}
+
 export function speak(input, { guide = 'umm_yasmin', rate = 0.72 } = {}) {
   if (typeof window === 'undefined') return;
 
@@ -82,16 +103,18 @@ export function speak(input, { guide = 'umm_yasmin', rate = 0.72 } = {}) {
     } catch { /* fall through to TTS */ }
   }
 
-  if (!window.speechSynthesis || !text) return;
-  window.speechSynthesis.cancel();
+  // Single-glyph input → use the recorded Antura letter name when available.
+  // Both guides share the recording since letter names are gender-independent.
+  if (typeof text === 'string' && LETTER_AUDIO_GLYPHS.has(text)) {
+    try {
+      const url = `${LETTER_AUDIO_BASE}/${encodeURIComponent(text)}.wav`;
+      const audio = new Audio(url);
+      audio.play().catch(() => speakViaTTS(text, guide, rate));
+      return;
+    } catch { /* fall through to TTS */ }
+  }
 
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = 'ar-EG';
-  utter.rate = rate;      // slower — these are brand-new readers
-  utter.pitch = 1;
-  const v = pickVoice(GUIDE_GENDER[guide] || 'female');
-  if (v) utter.voice = v;
-  window.speechSynthesis.speak(utter);
+  speakViaTTS(text, guide, rate);
 }
 
 export function stopSpeaking() {

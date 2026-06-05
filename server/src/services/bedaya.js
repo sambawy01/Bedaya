@@ -1,6 +1,15 @@
+const { z } = require('zod');
 const pool = require('../db/connection');
 const ai = require('./ai-provider');
+const memory = require('./learner-memory');
+const scheduler = require('./scheduler');
+const mastery = require('./mastery');
 const { nextLetter, letterInfo, orderFor, FREQUENCY_ORDER } = require('./letters');
+
+// Structural schema only — letter-constraint enforcement stays in validateStory().
+const STORY_SCHEMA = z.object({
+  story: z.string().min(3).max(400),
+});
 
 // Hamza/maddah variants are visually distinct but pedagogically equivalent
 // once a learner knows the base letter. We accept all of them when the base
@@ -95,10 +104,15 @@ async function planLesson(learnerId) {
     return { complete: true, warmup: known, learner };
   }
 
+  // FSRS-selected warm-up set sits alongside the legacy full-known list so
+  // clients can adopt the spaced-repetition queue at their own pace.
+  const warmupScheduled = await scheduler.selectWarmupSet(learnerId, 5);
+
   return {
     complete: false,
     isFirstLesson: known.length === 0 && !inProgress,
     warmup: known,
+    warmupScheduled,
     newLetter: nextL,
     learner,
   };
@@ -110,23 +124,64 @@ async function planLesson(learnerId) {
  */
 async function startSession(learnerId, letter) {
   // Ensure the letter has a progress row so future steps can update it.
-  await pool.query(
-    `INSERT INTO bedaya_letter_progress (learner_id, letter, status)
-     VALUES ($1, $2, 'introduced')
-     ON CONFLICT (learner_id, letter) DO NOTHING`,
+  // letter_id resolved from the canonical letters table — when seeded.
+  // Cast $2 explicitly: Postgres can't unify text vs varchar across both uses.
+  // RETURNING (xmax = 0) tells us whether THIS call actually inserted, so we
+  // log the introduction event to memory exactly once per letter per learner.
+  const insert = await pool.query(
+    `INSERT INTO bedaya_letter_progress (learner_id, letter, letter_id, status)
+     VALUES ($1, $2::varchar, (SELECT id FROM bedaya_letters WHERE glyph = $2::varchar), 'introduced')
+     ON CONFLICT (learner_id, letter) DO NOTHING
+     RETURNING letter_id, (xmax = 0) AS inserted`,
     [learnerId, letter]
   );
+  const justIntroduced = insert.rows[0]?.inserted === true;
+
+  // Resolve letter_id for FSRS card creation — read it back when the upsert
+  // was a no-op so we still have the canonical id.
+  let letterId = insert.rows[0]?.letter_id;
+  if (!letterId) {
+    const idRes = await pool.query(
+      `SELECT letter_id FROM bedaya_letter_progress WHERE learner_id = $1 AND letter = $2`,
+      [learnerId, letter]
+    );
+    letterId = idRes.rows[0]?.letter_id || null;
+  }
+
   const result = await pool.query(
     `INSERT INTO bedaya_sessions (learner_id, letter) VALUES ($1, $2) RETURNING id, started_at`,
     [learnerId, letter]
   );
+  if (justIntroduced) {
+    await memory.appendSummaryLine(learnerId, `تم تعريف حرف ${letter}`);
+    if (letterId) await scheduler.onLetterIntroduced(learnerId, letterId);
+  }
   return result.rows[0];
 }
 
-async function markPhase(sessionId, phase) {
+async function markPhase(sessionId, phase, options = {}) {
   const col = { warmup: 'warmup_done', phonics: 'phonics_done', story: 'story_done' }[phase];
   if (!col) throw new Error('invalid phase');
   await pool.query(`UPDATE bedaya_sessions SET ${col} = TRUE WHERE id = $1`, [sessionId]);
+
+  const sess = await pool.query(
+    `SELECT learner_id, letter FROM bedaya_sessions WHERE id = $1`,
+    [sessionId]
+  );
+  const { learner_id: learnerId, letter } = sess.rows[0] || {};
+  if (!learnerId) return;
+
+  // Phase-completion is a positive BKT signal for the lesson's focus letter.
+  // Warm-up taps signal review confidence for previously-reviewed letters;
+  // phonics/story signal mastery of the new letter being introduced.
+  if (phase === 'warmup' && Array.isArray(options.letterIds) && options.letterIds.length > 0) {
+    await scheduler.ratePhaseComplete(learnerId, options.letterIds, 'good');
+  } else if ((phase === 'phonics' || phase === 'story') && letter) {
+    const result = await mastery.recordSignal(learnerId, letter, true);
+    if (result.justMastered) {
+      await memory.appendSummaryLine(learnerId, `إتقان حرف ${letter} (تلقائي)`);
+    }
+  }
 }
 
 async function recordTrace(learnerId, letter) {
@@ -137,6 +192,13 @@ async function recordTrace(learnerId, letter) {
       WHERE learner_id = $1 AND letter = $2`,
     [learnerId, letter]
   );
+  // Each completed trace is a positive BKT signal — the learner produced
+  // the letter shape end-to-end. Auto-promotion to mastered is gated by
+  // threshold + min-reps inside recordSignal.
+  const result = await mastery.recordSignal(learnerId, letter, true);
+  if (result.justMastered) {
+    await memory.appendSummaryLine(learnerId, `إتقان حرف ${letter} (تلقائي)`);
+  }
 }
 
 async function completeSession(sessionId, { masterLetter } = {}) {
@@ -162,6 +224,9 @@ async function completeSession(sessionId, { masterLetter } = {}) {
         WHERE learner_id = $1 AND letter = $2`,
       [learner_id, letter]
     );
+    await memory.appendSummaryLine(learner_id, `إتقان حرف ${letter}`);
+  } else {
+    await memory.appendSummaryLine(learner_id, `إكمال جلسة على حرف ${letter}`);
   }
 
   await pool.query(
@@ -280,17 +345,25 @@ ${disallowed.join(' ، ')}
 
 ابدأ مباشرة بالقصة الآن.`;
 
+  // Prepend learner memory so the story can echo their progress and topics.
+  // Empty memory layers contribute nothing — the secular contract stays first.
+  const mem = await memory.getMemory(learnerId);
+  const memBlock = memory.renderForPrompt(mem);
+  const system = memBlock
+    ? `${SECULAR_SYSTEM_PROMPT}\n\n${memBlock}`
+    : SECULAR_SYSTEM_PROMPT;
+
   // Up to 3 attempts. Bedaya is offline-first in production; we tolerate
-  // a fallback when Claude can't satisfy the constraint.
+  // a fallback when the model can't satisfy the constraint.
   let lastStory = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     let story = '';
     try {
-      story = await ai.chat([{ role: 'user', content: prompt }], SECULAR_SYSTEM_PROMPT);
+      const obj = await ai.structured(STORY_SCHEMA, { system, prompt });
+      story = (obj?.story || '').trim();
     } catch {
       break;
     }
-    story = (story || '').trim();
     lastStory = story;
     const check = validateStory(story, allowed);
     if (check.ok) {
