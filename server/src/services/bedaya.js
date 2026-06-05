@@ -61,6 +61,33 @@ async function getLearner(id) {
   return result.rows[0] || null;
 }
 
+// Facilitator-side updates — letter_order and voice_guide are the only
+// fields the settings screen mutates. Returns the updated learner row.
+const ALLOWED_ORDERS = new Set(['frequency', 'moe', 'shape']);
+const ALLOWED_GUIDES = new Set(['umm_yasmin', 'amm_hassan']);
+
+async function updateLearner(id, { letterOrder, voiceGuide } = {}) {
+  const sets = [];
+  const params = [id];
+  if (letterOrder !== undefined) {
+    if (!ALLOWED_ORDERS.has(letterOrder)) throw new Error('invalid letterOrder');
+    params.push(letterOrder);
+    sets.push(`letter_order = $${params.length}`);
+  }
+  if (voiceGuide !== undefined) {
+    if (!ALLOWED_GUIDES.has(voiceGuide)) throw new Error('invalid voiceGuide');
+    params.push(voiceGuide);
+    sets.push(`voice_guide = $${params.length}`);
+  }
+  if (sets.length === 0) return getLearner(id);
+  const result = await pool.query(
+    `UPDATE bedaya_learners SET ${sets.join(', ')}, updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    params
+  );
+  return result.rows[0] || null;
+}
+
 async function getKnownLetters(learnerId) {
   const result = await pool.query(
     `SELECT letter FROM bedaya_letter_progress
@@ -391,6 +418,7 @@ module.exports = {
   SECULAR_SYSTEM_PROMPT,
   createLearner,
   getLearner,
+  updateLearner,
   getKnownLetters,
   planLesson,
   startSession,

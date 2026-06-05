@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LogOut, ArrowLeft, CheckCircle2, Volume2 } from 'lucide-react';
+import { LogOut, ArrowLeft, CheckCircle2, Volume2, Settings } from 'lucide-react';
 import AlifMark from '../components/AlifMark';
 import ListenButton from '../components/ListenButton';
 import { api } from '../lib/api';
@@ -76,13 +76,22 @@ export default function HomePage() {
             <span className="font-display font-bold text-base">أهلاً بيك</span>
           </button>
         </div>
-        <button
-          onClick={() => { logout(); navigate('/', { replace: true }); }}
-          className="text-stone-400 hover:text-stone-700"
-          aria-label="خروج"
-        >
-          <LogOut size={18} />
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/settings')}
+            className="text-stone-400 hover:text-stone-700"
+            aria-label="الإعدادات"
+          >
+            <Settings size={20} />
+          </button>
+          <button
+            onClick={() => { logout(); navigate('/', { replace: true }); }}
+            className="text-stone-400 hover:text-stone-700"
+            aria-label="خروج"
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
       </header>
 
       <motion.div

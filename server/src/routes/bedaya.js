@@ -30,6 +30,21 @@ router.get('/learners/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// PUT /api/bedaya/learners/:id — facilitator-side settings update
+router.put('/learners/:id', async (req, res, next) => {
+  try {
+    const { letterOrder, voiceGuide } = req.body || {};
+    const updated = await bedaya.updateLearner(req.params.id, { letterOrder, voiceGuide });
+    if (!updated) return res.status(404).json({ success: false, error: 'not found' });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    if (/invalid /.test(err.message)) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    next(err);
+  }
+});
+
 // GET /api/bedaya/lessons/next/:learnerId — plan the upcoming lesson
 router.get('/lessons/next/:learnerId', async (req, res, next) => {
   try {
