@@ -44,17 +44,25 @@ const LETTERS = [
   { glyph: 'ه', name: 'هاء',  romanised: 'haah',  sound: 'h',  examples: ['هواء', 'نهر'] },
   { glyph: 'و', name: 'واو',  romanised: 'waaw',  sound: 'w',  examples: ['ورد', 'دواء'] },
   { glyph: 'ي', name: 'ياء',  romanised: 'yaa',   sound: 'y',  examples: ['يد', 'يوم'] },
+  // First-class additions (Task 2) — Antura models these as letters in their
+  // own right, not diacritic edge cases. Letter inventory grows to 30.
+  { glyph: 'ة', name: 'تاء مربوطة', romanised: 'taa_marbuta', sound: 't', examples: ['مدرسة', 'ساعة', 'حياة'] },
+  { glyph: 'ء', name: 'همزة',       romanised: 'hamza',       sound: "'", examples: ['ماء', 'شيء'] },
 ];
 
 const BY_GLYPH = Object.fromEntries(LETTERS.map(l => [l.glyph, l]));
 
 // MOE-traditional order: the alphabetic sequence as taught in schools.
-const MOE_ORDER = ['ا','ب','ت','ث','ج','ح','خ','د','ذ','ر','ز','س','ش','ص','ض','ط','ظ','ع','غ','ف','ق','ك','ل','م','ن','ه','و','ي'];
+// ة and ء are appended at the end — Egyptian textbooks teach them as
+// supplementary letters after the canonical 28 alif-baa recitation.
+const MOE_ORDER = ['ا','ب','ت','ث','ج','ح','خ','د','ذ','ر','ز','س','ش','ص','ض','ط','ظ','ع','غ','ف','ق','ك','ل','م','ن','ه','و','ي','ة','ء'];
 
 // Frequency-weighted order: high-utility letters first so functional words
 // (أم, باب, يد, ماء, بيت, نهر…) are reachable within the first few sessions.
-// Derived from common Arabic letter frequencies in everyday/written text.
-const FREQUENCY_ORDER = ['ا','ل','م','ي','ن','و','ر','ت','ب','ه','ع','س','ف','ك','د','ق','ح','ج','ش','ز','خ','ص','ث','ط','ذ','ض','غ','ظ'];
+// ة (feminine noun marker, very frequent) is inserted mid-pack so common
+// words like مدرسة / ساعة become reachable early; ء (rare raw, common via
+// أ إ ؤ ئ variants we already accept) lands toward the end.
+const FREQUENCY_ORDER = ['ا','ل','م','ي','ن','ة','و','ر','ت','ب','ه','ع','س','ف','ك','د','ق','ح','ج','ش','ز','خ','ص','ث','ط','ذ','ض','غ','ظ','ء'];
 
 // Shape-family order from Antura's curriculum (vgwb/Antura, BSD-2-Clause).
 // Letters that share a base shape are taught together so the learner internalises
@@ -71,8 +79,8 @@ const SHAPE_ORDER = [
   'ا','د','ذ','ر','ز','و',
   // Stage 4: seen/sad family
   'س','ش','ص','ض','ط','ظ',
-  // Stage 5: feh/qaf
-  'ف','ق',
+  // Stage 5: feh/qaf plus hamza + taa marbuta (Antura groups them here)
+  'ف','ق','ء','ة',
   // Stage 6: remainder
   'ع','غ','م','ك','ل','ه',
 ];

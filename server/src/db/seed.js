@@ -9,14 +9,22 @@ const { LETTERS } = require('../services/letters');
 
 // ا is the only true vowel letter; و and ي are consonants that double as
 // long-vowel markers and stay consonants here (matches what learners see).
+// ء (hamza) and ة (taa marbuta) classify as 'symbol' — modelled as
+// first-class letters but neither pure consonants nor vowels in the
+// pedagogy.
 const VOWEL_GLYPHS = new Set(['ا']);
+const SYMBOL_GLYPHS = new Set(['ء', 'ة']);
 
 async function seed(client) {
   await client.query('BEGIN');
   try {
     for (let i = 0; i < LETTERS.length; i++) {
       const l = LETTERS[i];
-      const letterType = VOWEL_GLYPHS.has(l.glyph) ? 'vowel' : 'consonant';
+      const letterType = VOWEL_GLYPHS.has(l.glyph)
+        ? 'vowel'
+        : SYMBOL_GLYPHS.has(l.glyph)
+          ? 'symbol'
+          : 'consonant';
       const sortId = i; // LETTERS array is in MOE/alphabetic order.
       await client.query(
         `INSERT INTO bedaya_letters (glyph, name_ar, name_romanised, sound, letter_type, sort_id)
