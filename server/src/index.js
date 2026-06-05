@@ -13,9 +13,15 @@ const PORT = process.env.PORT || 4001;
 
 app.use(helmet());
 app.use(morgan('dev'));
+// CORS allowlist in prod — comma-separated origins via ALLOWED_ORIGINS env
+// (e.g. "https://bedaya.vercel.app,https://bedaya-staging.vercel.app").
+// Falls back to permissive in prod when unset so the first deploy doesn't
+// 403 itself before the env var lands.
+const PROD_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? true
+    ? (PROD_ORIGINS.length > 0 ? PROD_ORIGINS : true)
     : ['http://localhost:5183'],
   credentials: true,
 }));
