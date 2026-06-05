@@ -56,8 +56,30 @@ const MOE_ORDER = ['ا','ب','ت','ث','ج','ح','خ','د','ذ','ر','ز','س','
 // Derived from common Arabic letter frequencies in everyday/written text.
 const FREQUENCY_ORDER = ['ا','ل','م','ي','ن','و','ر','ت','ب','ه','ع','س','ف','ك','د','ق','ح','ج','ش','ز','خ','ص','ث','ط','ذ','ض','غ','ظ'];
 
+// Shape-family order from Antura's curriculum (vgwb/Antura, BSD-2-Clause).
+// Letters that share a base shape are taught together so the learner internalises
+// "this stroke + how many dots/which side." Less optimal for adult Egyptian
+// learners than frequency-weighted (early word formation is limited) but
+// some facilitators prefer it for the visual logic. Hamza and taa marbuta
+// land in Task 2 — until then this order spans the standard 28 letters.
+const SHAPE_ORDER = [
+  // Stage 1: identical base shape, differ by dot count/position
+  'ب','ت','ث','ن','ي',
+  // Stage 2: same family
+  'ج','ح','خ',
+  // Stage 3: single-connection letters
+  'ا','د','ذ','ر','ز','و',
+  // Stage 4: seen/sad family
+  'س','ش','ص','ض','ط','ظ',
+  // Stage 5: feh/qaf
+  'ف','ق',
+  // Stage 6: remainder
+  'ع','غ','م','ك','ل','ه',
+];
+
 function orderFor(mode) {
   if (mode === 'moe') return MOE_ORDER;
+  if (mode === 'shape') return SHAPE_ORDER;
   return FREQUENCY_ORDER;
 }
 
@@ -81,6 +103,7 @@ module.exports = {
   LETTERS,
   MOE_ORDER,
   FREQUENCY_ORDER,
+  SHAPE_ORDER,
   orderFor,
   letterInfo,
   nextLetter,

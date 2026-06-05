@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS bedaya_learners (
   voice_guide VARCHAR(20) NOT NULL DEFAULT 'umm_yasmin'
     CHECK (voice_guide IN ('umm_yasmin', 'amm_hassan')),
   letter_order VARCHAR(20) NOT NULL DEFAULT 'frequency'
-    CHECK (letter_order IN ('frequency', 'moe')),
+    CHECK (letter_order IN ('frequency', 'moe', 'shape')),
   device_id VARCHAR(255),
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
@@ -184,3 +184,12 @@ ALTER TABLE bedaya_letter_progress
   ADD COLUMN IF NOT EXISTS p_mastered DOUBLE PRECISION NOT NULL DEFAULT 0.1;
 ALTER TABLE bedaya_letter_progress
   ADD COLUMN IF NOT EXISTS bkt_reps INT NOT NULL DEFAULT 0;
+
+-- Extend the letter_order CHECK to include 'shape' for facilitator deployments
+-- that prefer Antura's shape-family grouping. Drop+recreate is the only way
+-- to widen a CHECK constraint idempotently.
+ALTER TABLE bedaya_learners
+  DROP CONSTRAINT IF EXISTS bedaya_learners_letter_order_check;
+ALTER TABLE bedaya_learners
+  ADD CONSTRAINT bedaya_learners_letter_order_check
+    CHECK (letter_order IN ('frequency', 'moe', 'shape'));
