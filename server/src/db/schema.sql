@@ -193,3 +193,11 @@ ALTER TABLE bedaya_learners
 ALTER TABLE bedaya_learners
   ADD CONSTRAINT bedaya_learners_letter_order_check
     CHECK (letter_order IN ('frequency', 'moe', 'shape'));
+
+-- One-shot flag: once a learner's known letters have all been backfilled into
+-- bedaya_letter_fsrs, planLesson skips the backfill entirely on every
+-- subsequent call. New learners post-fix are also flagged on first plan so
+-- the backfill INSERT runs at most once per learner ever. After this,
+-- /lessons/start is the only path that creates FSRS cards.
+ALTER TABLE bedaya_learners
+  ADD COLUMN IF NOT EXISTS fsrs_backfilled_at TIMESTAMPTZ;

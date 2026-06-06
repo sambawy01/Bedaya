@@ -57,15 +57,25 @@ async function ensureCard(learnerId, letterId) {
   );
   if (existing.rows.length > 0) return rowToCard(existing.rows[0]);
   const empty = createEmptyCard();
-  await pool.query(
+  const insert = await pool.query(
     `INSERT INTO bedaya_letter_fsrs
        (learner_id, letter_id, due, stability, difficulty, elapsed_days,
         scheduled_days, reps, lapses, state, last_review)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT DO NOTHING
+     RETURNING *`,
     [learnerId, ...cardToParams(letterId, empty)]
   );
-  return empty;
+  if (insert.rows.length > 0) return rowToCard(insert.rows[0]);
+  // Conflict — a concurrent caller (e.g. backfill or another startSession)
+  // inserted a card between our SELECT and INSERT. Re-read so callers like
+  // rateCard never operate on a stale `empty` while the real state has
+  // already advanced.
+  const reread = await pool.query(
+    `SELECT * FROM bedaya_letter_fsrs WHERE learner_id = $1 AND letter_id = $2`,
+    [learnerId, letterId]
+  );
+  return rowToCard(reread.rows[0]) || empty;
 }
 
 /**
@@ -140,10 +150,32 @@ async function onLetterIntroduced(learnerId, letterId) {
   await ensureCard(learnerId, letterId);
 }
 
+/**
+ * Backfill FSRS cards for pre-FSRS learners (and any letter whose card was
+ * skipped on a re-attempt). Single-statement bulk upsert — resolves glyph →
+ * letter_id and inserts missing cards in one round trip. ts-fsrs's
+ * createEmptyCard() is deterministic (due=NOW, all counters 0, state=New) so
+ * we can inline its values rather than read them per card.
+ */
+async function ensureCardsForGlyphs(learnerId, glyphs) {
+  if (!glyphs || glyphs.length === 0) return;
+  await pool.query(
+    `INSERT INTO bedaya_letter_fsrs
+       (learner_id, letter_id, due, stability, difficulty, elapsed_days,
+        scheduled_days, reps, lapses, state, last_review)
+     SELECT $1, l.id, NOW(), 0, 0, 0, 0, 0, 0, 0, NULL
+       FROM bedaya_letters l
+      WHERE l.glyph = ANY($2::varchar[])
+     ON CONFLICT (learner_id, letter_id) DO NOTHING`,
+    [learnerId, glyphs]
+  );
+}
+
 module.exports = {
   ensureCard,
   selectWarmupSet,
   rateCard,
   ratePhaseComplete,
   onLetterIntroduced,
+  ensureCardsForGlyphs,
 };

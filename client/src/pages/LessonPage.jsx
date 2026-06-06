@@ -48,7 +48,7 @@ export default function LessonPage() {
         // Skip warm-up when nothing's due — FSRS may legitimately return an
         // empty set on first-day-back or for a brand-new learner.
         const hasWarmup = (p.warmupScheduled && p.warmupScheduled.length > 0)
-          || (p.warmup && p.warmup.length > 0);
+          || (p.known && p.known.length > 0);
         setPhase(hasWarmup ? 'warmup' : 'phonics');
       } catch (e) {
         if (!cancelled) setError(e.message || 'حدث خطأ');
@@ -63,17 +63,18 @@ export default function LessonPage() {
   }, [learner]);
 
   const newLetter = plan?.newLetter;
-  // Prefer the FSRS-selected warm-up queue; fall back to the legacy
-  // full-known-letters list for older clients or empty schedules. Items are
-  // normalized to { glyph, letterId } so the warm-up grid and the phase POST
-  // share the same shape. Memoized on `plan` so `advance`'s useCallback is
-  // meaningful — without this the dep changes every render.
+  // Prefer the FSRS-selected warm-up queue; fall back to the full known set
+  // when no cards are due (e.g. on a first-day-back where everything is
+  // scheduled for the future, or for legacy clients pre-FSRS-backfill).
+  // Items are normalized to { glyph, letterId } so the warm-up grid and the
+  // phase POST share the same shape. Memoized on `plan` so `advance`'s
+  // useCallback is meaningful — without this the dep changes every render.
   const warmupItems = useMemo(() => {
     if (!plan) return [];
     if (plan.warmupScheduled && plan.warmupScheduled.length > 0) {
       return plan.warmupScheduled.map((w) => ({ glyph: w.glyph, letterId: w.letterId }));
     }
-    return (plan.warmup || []).map((g) => ({ glyph: g, letterId: null }));
+    return (plan.known || []).map((g) => ({ glyph: g, letterId: null }));
   }, [plan]);
 
   // Build the spoken instruction for the current phase. Returns { key, text }

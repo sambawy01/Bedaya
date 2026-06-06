@@ -30,16 +30,11 @@ export default function HomePage() {
       .finally(() => setLoadingPlan(false));
   }, [learner]);
 
-  // Prefer the FSRS-selected warm-up queue when populated; fall back to the
-  // legacy full known-letters list. Mirrors the LessonPage normalization so
-  // both screens render the same set of glyphs.
-  const warmupGlyphs = useMemo(() => {
-    if (!plan) return [];
-    if (plan.warmupScheduled && plan.warmupScheduled.length > 0) {
-      return plan.warmupScheduled.map((w) => w.glyph);
-    }
-    return plan.warmup || [];
-  }, [plan]);
+  // The home strip is "letters you've studied" — show the full known set, not
+  // the FSRS-due subset (which is capped at 5 and used by the LessonPage
+  // warm-up phase). The server already excludes the current focus letter from
+  // plan.known so it doesn't get double-billed as both new and known.
+  const warmupGlyphs = useMemo(() => plan?.known || [], [plan]);
 
   // Greet by playing the learner's own recorded name, then the lesson prompt.
   const prompt = plan?.complete

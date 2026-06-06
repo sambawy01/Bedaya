@@ -128,18 +128,40 @@ async function planLesson(learnerId) {
   }
 
   if (!nextL) {
-    return { complete: true, warmup: known, learner };
+    return { complete: true, known, learner };
   }
 
-  // FSRS-selected warm-up set sits alongside the legacy full-known list so
-  // clients can adopt the spaced-repetition queue at their own pace.
+  // One-shot FSRS backfill per learner. Catches (1) learners created before
+  // FSRS shipped, and (2) any letter whose card was skipped because its
+  // progress row already existed on re-attempt. After fsrs_backfilled_at is
+  // stamped, every future startSession is responsible for creating cards, so
+  // this branch never runs again for this learner.
+  if (!learner.fsrs_backfilled_at) {
+    if (known.length > 0) {
+      await scheduler.ensureCardsForGlyphs(learnerId, known);
+    }
+    await pool.query(
+      `UPDATE bedaya_learners SET fsrs_backfilled_at = NOW() WHERE id = $1`,
+      [learnerId]
+    );
+  }
+
   const warmupScheduled = await scheduler.selectWarmupSet(learnerId, 5);
+
+  // The focus letter of THIS lesson is taught in the phonics phase. It must
+  // never surface in the warm-up grid — that would tell the learner "you
+  // already know this" right before introducing it as new. The FSRS card for
+  // an in-progress / freshly-introduced letter has due=NOW, so without this
+  // filter it'd leak into warmupScheduled on every re-attempt.
+  const focusGlyph = nextL.glyph;
+  const filteredScheduled = warmupScheduled.filter((w) => w.glyph !== focusGlyph);
+  const filteredKnown = known.filter((g) => g !== focusGlyph);
 
   return {
     complete: false,
     isFirstLesson: known.length === 0 && !inProgress,
-    warmup: known,
-    warmupScheduled,
+    known: filteredKnown,
+    warmupScheduled: filteredScheduled,
     newLetter: nextL,
     learner,
   };
@@ -179,9 +201,20 @@ async function startSession(learnerId, letter) {
     `INSERT INTO bedaya_sessions (learner_id, letter) VALUES ($1, $2) RETURNING id, started_at`,
     [learnerId, letter]
   );
+  // Always ensure the FSRS card exists — re-attempts of an abandoned
+  // in-progress letter don't re-trigger justIntroduced (ON CONFLICT DO
+  // NOTHING) but they still need a card to enter the spaced-repetition path.
+  // ensureCard is ON CONFLICT DO NOTHING itself, so calling it every start is
+  // safe and idempotent.
+  if (letterId) {
+    await scheduler.onLetterIntroduced(learnerId, letterId);
+  } else {
+    // Glyph isn't seeded in bedaya_letters — FSRS will silently skip this
+    // letter forever. Surface it loudly so seed/order drift fails in dev.
+    console.warn(`[startSession] no letter_id for glyph '${letter}' — FSRS card not created`);
+  }
   if (justIntroduced) {
     await memory.appendSummaryLine(learnerId, `تم تعريف حرف ${letter}`);
-    if (letterId) await scheduler.onLetterIntroduced(learnerId, letterId);
   }
   return result.rows[0];
 }
@@ -243,6 +276,18 @@ async function completeSession(sessionId, { masterLetter } = {}) {
       WHERE id = $1`,
     [sessionId]
   );
+
+  // First-interval FSRS rating for the focus letter. Without this, the card
+  // stays in state=New with due=NOW after the lesson, then surfaces in the
+  // very next lesson's warm-up — collapsing the first scheduled interval to
+  // zero. Rating 'good' on lesson completion lets FSRS pick a real first
+  // interval (~1 day) so the spacing curve actually applies.
+  const idRes = await pool.query(
+    `SELECT letter_id FROM bedaya_letter_progress WHERE learner_id = $1 AND letter = $2`,
+    [learner_id, letter]
+  );
+  const letterId = idRes.rows[0]?.letter_id;
+  if (letterId) await scheduler.rateCard(learner_id, letterId, 'good');
 
   if (masterLetter) {
     await pool.query(
