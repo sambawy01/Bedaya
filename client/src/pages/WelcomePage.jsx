@@ -47,7 +47,12 @@ export default function WelcomePage() {
         onClick={handleStart}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleStart(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleStart();
+          }
+        }}
         aria-label="اضغط للبدء"
         className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-center cursor-pointer select-none"
       >
