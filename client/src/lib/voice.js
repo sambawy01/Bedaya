@@ -58,6 +58,8 @@ const STATIC_PHRASE_KEYS = [
   'phase_warmup', 'phase_trace',
   'phase_story_words', 'phase_story_letters', 'phase_story_normal', 'phase_story_loading',
   'phase_done',
+  'phase_phonics_cue',
+  'recap_opener', 'recap_closer',
   'error_signup', 'error_lesson',
 ];
 // Per-letter clip keys — see scripts/generate-voice-clips-elevenlabs.mjs.
