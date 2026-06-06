@@ -108,12 +108,12 @@ export default function LessonPage() {
     spokenPhase.current = fingerprint;
     const line = phaseLine();
     if (!line) return;
-    const t = setTimeout(() => {
-      speak(line, { guide });
-      if (phase === 'phonics' && newLetter) {
-        setTimeout(() => speak(newLetter.glyph, { guide }), 2600);
-      }
-    }, 350);
+    // The phonics intro already names the letter ('اسمه ألف...') in the
+    // guide's voice, so we no longer chase it with the Antura clip — that
+    // double-fire used to interrupt the intro mid-sentence with an MSA voice.
+    // The orange Volume button on the phonics screen still plays the Antura
+    // letter audio on demand.
+    const t = setTimeout(() => { speak(line, { guide }); }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, story, storyLoading]);
