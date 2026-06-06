@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Volume2 } from 'lucide-react';
-import { speak, unlockAudio } from '../lib/voice';
+import { playLine, unlockAudio } from '../lib/voice';
 import { useGuide } from '../context/GuideContext';
 
 /**
@@ -8,7 +8,7 @@ import { useGuide } from '../context/GuideContext';
  * this is the lifeline on every screen: tap it to hear the instruction again.
  * Also unlocks audio on first use so subsequent auto-speak works.
  *
- * `line` is a string or { key, text }.
+ * `line` may be a string, { key, text }, or { sequence: [line, line, ...] }.
  */
 export default function ListenButton({ line, size = 'md', className = '' }) {
   const { guide } = useGuide();
@@ -17,7 +17,7 @@ export default function ListenButton({ line, size = 'md', className = '' }) {
 
   function play() {
     unlockAudio();
-    speak(line, { guide });
+    playLine(line, { guide });
   }
 
   return (
