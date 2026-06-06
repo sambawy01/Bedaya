@@ -85,6 +85,23 @@ const LETTER_CLIPS = Object.fromEntries(
   Object.entries(LETTER_NAMES).map(([glyph, name]) => [`letter_${glyph}`, name])
 );
 
+// Phonics example words tapped on the lesson page (LessonPage phonics phase).
+// Union of LETTERS[].examples in server/src/services/letters.js — kept here as
+// a literal so this script doesn't drag in server deps. If you add a new
+// example in letters.js, add it here too or the tap will fall through to
+// browser TTS (the very thing we're eliminating).
+const EXAMPLE_WORDS = [
+  'أم','باب','بنت','بيت','توت','تين','ثلج','ثوب','جسر','جمل',
+  'حقل','حليب','حياة','خبز','خيمة','دار','دواء','ذرة','ذيل','رجل',
+  'زهرة','زيت','ساعة','سمك','سوق','شاي','شمس','شيء','صباح','صورة',
+  'ضوء','ضيف','طبيب','طريق','ظل','ظهر','عمل','عين','غداء','غيم',
+  'فول','فيل','قلم','قمر','كتاب','كرسي','ليل','ليمون','ماء','مدرسة',
+  'مطر','نخلة','نهر','هواء','ورد','يد','يوم',
+];
+const EXAMPLE_CLIPS = Object.fromEntries(
+  EXAMPLE_WORDS.map((w) => [`word_${w}`, w])
+);
+
 const MODEL_ID = 'eleven_multilingual_v2';
 const VOICE_SETTINGS = {
   stability: 0.6,
@@ -120,9 +137,15 @@ async function main() {
   for (const [guideKey, voiceId] of Object.entries(VOICES)) {
     const outDir = path.join(ROOT, 'client', 'public', 'audio', 'voice', guideKey);
     fs.mkdirSync(outDir, { recursive: true });
-    const all = { ...PHRASES, ...PHONICS_INTROS, ...LETTER_CLIPS };
+    const all = { ...PHRASES, ...PHONICS_INTROS, ...LETTER_CLIPS, ...EXAMPLE_CLIPS };
     for (const [phraseKey, text] of Object.entries(all)) {
       const dest = path.join(outDir, `${phraseKey}.mp3`);
+      // Idempotent: skip files that already exist so re-runs don't burn
+      // credits regenerating the same clips. Delete a file to force re-bake.
+      if (fs.existsSync(dest)) {
+        console.log(`  ${guideKey}/${phraseKey}.mp3  (skip, exists)`);
+        continue;
+      }
       const bytes = await synthesize(voiceId, text, dest);
       totalBytes += bytes; count += 1;
       console.log(`  ${guideKey}/${phraseKey}.mp3  ${bytes.toLocaleString()} bytes`);
@@ -133,6 +156,10 @@ async function main() {
     const outDir = path.join(ROOT, 'client', 'public', 'audio', 'voice', voice);
     fs.mkdirSync(outDir, { recursive: true });
     const dest = path.join(outDir, `${key}.mp3`);
+    if (fs.existsSync(dest)) {
+      console.log(`  ${voice}/${key}.mp3  (skip, exists)`);
+      continue;
+    }
     const bytes = await synthesize(VOICES[voice], text, dest);
     totalBytes += bytes; count += 1;
     console.log(`  ${voice}/${key}.mp3  ${bytes.toLocaleString()} bytes  (single-voice)`);

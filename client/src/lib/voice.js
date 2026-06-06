@@ -33,6 +33,22 @@ const LETTER_GLYPHS = new Set([
   'ق','ك','ل','م','ن','ه','و','ي','ة','ء',
 ]);
 
+// Phonics example words tapped on LessonPage. Each one has a pre-baked
+// ElevenLabs clip at word_<word>.mp3 — without this set the tap would route
+// to browser TTS (the "old voice" the user explicitly rejected). Must stay
+// in lockstep with EXAMPLE_WORDS in scripts/generate-voice-clips-elevenlabs.mjs
+// AND with the union of LETTERS[].examples in server/src/services/letters.js.
+// If you add a new example word, add it in all three places and re-run the
+// generator; otherwise the tap silently falls back to TTS.
+const EXAMPLE_WORDS = new Set([
+  'أم','باب','بنت','بيت','توت','تين','ثلج','ثوب','جسر','جمل',
+  'حقل','حليب','حياة','خبز','خيمة','دار','دواء','ذرة','ذيل','رجل',
+  'زهرة','زيت','ساعة','سمك','سوق','شاي','شمس','شيء','صباح','صورة',
+  'ضوء','ضيف','طبيب','طريق','ظل','ظهر','عمل','عين','غداء','غيم',
+  'فول','فيل','قلم','قمر','كتاب','كرسي','ليل','ليمون','ماء','مدرسة',
+  'مطر','نخلة','نهر','هواء','ورد','يد','يوم',
+]);
+
 // Pre-baked ElevenLabs recordings (eleven_multilingual_v2 with per-guide
 // Arabic-trained voices). Each key resolves to per-guide URLs; missing
 // entries fall through to TTS.
@@ -53,6 +69,7 @@ const RECORDINGS = Object.fromEntries(
     ...STATIC_PHRASE_KEYS,
     ...PHONICS_GLYPHS.map((g) => `phonics_intro_${g}`),
     ...PHONICS_GLYPHS.map((g) => `letter_${g}`),
+    ...Array.from(EXAMPLE_WORDS).map((w) => `word_${w}`),
   ].map((k) => [k, {
     umm_yasmin: `/audio/voice/umm_yasmin/${k}.mp3`,
     amm_hassan: `/audio/voice/amm_hassan/${k}.mp3`,
@@ -217,6 +234,36 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
     }
   }
 
+  // Phonics example word input (multi-char Arabic word) → look up word_<w>
+  // clip. Eliminates the browser-TTS leak on LessonPage's example-word taps.
+  if (typeof text === 'string' && EXAMPLE_WORDS.has(text)) {
+    const wordClip = RECORDINGS[`word_${text}`]?.[guide];
+    if (wordClip) {
+      try {
+        stopAll();
+        const audio = new Audio(wordClip);
+        _currentAudio = audio;
+        audio.addEventListener('ended', () => {
+          if (_currentAudio === audio) {
+            _currentAudio = null;
+            flushQueue();
+          }
+        });
+        audio.play().catch(() => {
+          if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+        });
+        return;
+      } catch { /* fall through to TTS */ }
+    }
+  }
+
+  // FALLTHROUGH: browser TTS. The only legitimate caller in production today
+  // is LessonPage's "اسمع القصة" orange button — story content is dynamic AI
+  // output with no pre-recorded clip. Every other speak() call should resolve
+  // above via a key, a letter glyph, or an EXAMPLE_WORDS hit. If you hit this
+  // path from anywhere else, you've introduced a regression: either add a
+  // recording or pass { key, text } instead of a bare string. Future work:
+  // server-side ElevenLabs proxy to synthesize story content on-demand.
   speakViaTTS(text, guide, rate);
 }
 

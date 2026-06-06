@@ -77,9 +77,9 @@ export default function LessonPage() {
   }, [plan]);
 
   // Build the spoken instruction for the current phase. Returns { key, text }
-  // so speak() can pick the pre-recorded Edge TTS clip (ar-EG-Salma/Shakir)
-  // for static lines. Phonics is dynamic (letter name interpolated) so it
-  // falls through to browser TTS — the letter name itself is the Antura clip.
+  // so speak() can pick the pre-recorded ElevenLabs clip (per-guide voice)
+  // for every line — including the phonics intro, which has a per-letter
+  // phonics_intro_<glyph> clip with the letter name baked in.
   const phaseLine = useCallback(() => {
     switch (phase) {
       case 'warmup':
@@ -290,6 +290,13 @@ export default function LessonPage() {
                 <div dir="rtl" className="font-script text-4xl leading-loose bg-white border-2 border-stone-200 rounded-3xl p-6 min-h-32 flex items-center justify-center">
                   {story.story}
                 </div>
+                {/* ONLY remaining browser-TTS path in production. The story is
+                    AI-generated per session so it has no pre-recorded clip.
+                    Every other speak() call resolves to an ElevenLabs MP3
+                    (phrases, letter glyphs, example words). Future work:
+                    server-side ElevenLabs proxy that synthesizes the story
+                    on-demand and caches it for the session, so the orange
+                    button plays a guide-voice MP3 instead of macOS Maged. */}
                 <button
                   onClick={() => { unlockAudio(); speak(story.story, { guide }); }}
                   aria-label="اسمع"
