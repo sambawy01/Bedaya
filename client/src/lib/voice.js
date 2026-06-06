@@ -36,8 +36,17 @@ const STATIC_PHRASE_KEYS = [
   'phase_done',
   'error_signup', 'error_lesson',
 ];
+// Phonics intro is per-letter — see scripts/generate-voice-clips-elevenlabs.mjs.
+const PHONICS_GLYPHS = [
+  'ا','ب','ت','ث','ج','ح','خ','د','ذ','ر',
+  'ز','س','ش','ص','ض','ط','ظ','ع','غ','ف',
+  'ق','ك','ل','م','ن','ه','و','ي','ة','ء',
+];
 const RECORDINGS = Object.fromEntries(
-  STATIC_PHRASE_KEYS.map((k) => [k, {
+  [
+    ...STATIC_PHRASE_KEYS,
+    ...PHONICS_GLYPHS.map((g) => `phonics_intro_${g}`),
+  ].map((k) => [k, {
     umm_yasmin: `/audio/voice/umm_yasmin/${k}.mp3`,
     amm_hassan: `/audio/voice/amm_hassan/${k}.mp3`,
   }])

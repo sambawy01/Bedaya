@@ -56,6 +56,28 @@ const SAMPLES = {
   sample_amm_hassan: { voice: 'amm_hassan', text: 'أنا عم حسن، هتعلّم معايا براحتك.' },
 };
 
+// Per-letter phonics intro — the line that auto-plays when the lesson hits the
+// phonics phase. Keyed by glyph so phaseLine() can look up phonics_intro_<glyph>
+// in RECORDINGS. Letter name + glyph come from the seed in services/letters.js
+// (kept in sync manually; the script fails loudly if a glyph is missing below).
+const LETTER_NAMES = {
+  'ا': 'ألف',  'ب': 'باء',  'ت': 'تاء',  'ث': 'ثاء',
+  'ج': 'جيم',  'ح': 'حاء',  'خ': 'خاء',  'د': 'دال',
+  'ذ': 'ذال',  'ر': 'راء',  'ز': 'زاي',  'س': 'سين',
+  'ش': 'شين',  'ص': 'صاد',  'ض': 'ضاد',  'ط': 'طاء',
+  'ظ': 'ظاء',  'ع': 'عين',  'غ': 'غين',  'ف': 'فاء',
+  'ق': 'قاف',  'ك': 'كاف',  'ل': 'لام',  'م': 'ميم',
+  'ن': 'نون',  'ه': 'هاء',  'و': 'واو',  'ي': 'ياء',
+  'ة': 'تاء مربوطة',
+  'ء': 'همزة',
+};
+const PHONICS_INTROS = Object.fromEntries(
+  Object.entries(LETTER_NAMES).map(([glyph, name]) => [
+    `phonics_intro_${glyph}`,
+    `ده حرف جديد. اسمه ${name}. دوس على الزرار البرتقالي عشان تسمعه.`,
+  ])
+);
+
 const MODEL_ID = 'eleven_multilingual_v2';
 const VOICE_SETTINGS = {
   stability: 0.6,
@@ -91,7 +113,8 @@ async function main() {
   for (const [guideKey, voiceId] of Object.entries(VOICES)) {
     const outDir = path.join(ROOT, 'client', 'public', 'audio', 'voice', guideKey);
     fs.mkdirSync(outDir, { recursive: true });
-    for (const [phraseKey, text] of Object.entries(PHRASES)) {
+    const all = { ...PHRASES, ...PHONICS_INTROS };
+    for (const [phraseKey, text] of Object.entries(all)) {
       const dest = path.join(outDir, `${phraseKey}.mp3`);
       const bytes = await synthesize(voiceId, text, dest);
       totalBytes += bytes; count += 1;

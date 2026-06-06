@@ -81,7 +81,9 @@ export default function LessonPage() {
       case 'warmup':
         return { key: 'phase_warmup', text: 'دي الحروف اللي عرفتها. دوس على أي حرف عشان تسمعه. بعدين دوس الزرار الأخضر عشان نكمل.' };
       case 'phonics':
-        return newLetter ? { text: `ده حرف جديد. اسمه ${newLetter.name}. دوس على الزرار البرتقالي عشان تسمعه.` } : '';
+        return newLetter
+          ? { key: `phonics_intro_${newLetter.glyph}`, text: `ده حرف جديد. اسمه ${newLetter.name}. دوس على الزرار البرتقالي عشان تسمعه.` }
+          : '';
       case 'trace':
         return { key: 'phase_trace', text: 'دلوقتي اكتب الحرف بإصبعك فوق الخط.' };
       case 'story':
