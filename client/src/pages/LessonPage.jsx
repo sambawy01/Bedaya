@@ -5,7 +5,7 @@ import { Volume2, ArrowLeft, CheckCircle2, Home } from 'lucide-react';
 import { api } from '../lib/api';
 import { useLearner } from '../context/LearnerContext';
 import { useGuide } from '../context/GuideContext';
-import { speak, stopSpeaking, unlockAudio } from '../lib/voice';
+import { speak, stopSpeaking, unlockAudio, playLine } from '../lib/voice';
 import ListenButton from '../components/ListenButton';
 import TraceCanvas from '../components/TraceCanvas';
 
@@ -86,16 +86,23 @@ export default function LessonPage() {
       case 'warmup':
         return { key: 'phase_warmup', text: 'دي الحروف اللي عرفتها. دوس على أي حرف عشان تسمعه. بعدين دوس الزرار الأخضر عشان نكمل.' };
       case 'phonics':
+        // Two-clip sequence: the letter name (existing per-glyph clip) followed
+        // by an action cue. Replaces the old phonics_intro_<glyph> single clip
+        // which re-introduced "this is today's lesson" after HomePage already
+        // framed it.
         return newLetter
-          ? { key: `phonics_intro_${newLetter.glyph}`, text: `ده حرف جديد. اسمه ${newLetter.name}. دوس على الزرار البرتقالي عشان تسمعه.` }
+          ? {
+              sequence: [
+                { key: `letter_${newLetter.glyph}`, text: newLetter.glyph },
+                { key: 'phase_phonics_cue', text: 'دوس على الزرار البرتقالي عشان تسمعه تاني.' },
+              ],
+            }
           : '';
       case 'trace':
         return { key: 'phase_trace', text: 'دلوقتي اكتب الحرف بإصبعك فوق الخط.' };
       case 'story':
         // Stay silent while the AI story is loading — the visual placeholder
-        // 'لحظة…' on screen already signals waiting. Speaking 'لحظة صغيرة'
-        // here only created an interruption when the story arrived 1-2s
-        // later and the real phase_story_* clip wanted the channel.
+        // 'لحظة…' on screen already signals waiting.
         if (!story) return '';
         return story.mode === 'words'
           ? { key: 'phase_story_words', text: 'دي كلمات فيها بس الحروف اللي عرفتها. دوس عليها عشان تسمعها.' }
@@ -103,7 +110,18 @@ export default function LessonPage() {
           ? { key: 'phase_story_letters', text: 'برافو! ده أول حرف. الكلمات هتيجي بعد حروف أكتر.' }
           : { key: 'phase_story_normal', text: 'دي قصة قصيرة. دوس عشان تسمعها.' };
       case 'done':
-        return { key: 'phase_done', text: 'برافو عليك! خلّصت درس النهاردة.' };
+        // Three-clip motivating recap: opener leaves "حرف..." open so the
+        // letter_<glyph> clip lands as the sentence completion, then a warm
+        // closer that acknowledges the warmup and sets up tomorrow.
+        return newLetter
+          ? {
+              sequence: [
+                { key: 'recap_opener', text: 'برافو عليك! النهاردة اتعلمت حرف...' },
+                { key: `letter_${newLetter.glyph}`, text: newLetter.glyph },
+                { key: 'recap_closer', text: 'وراجعت اللي عرفته قبل كده. أنا فخور بيك. لما ترجع بكرة هنكمل.' },
+              ],
+            }
+          : { key: 'phase_done', text: 'برافو عليك! خلّصت درس النهاردة.' };
       default:
         return '';
     }
@@ -125,7 +143,7 @@ export default function LessonPage() {
     // we kick off the new phase's narration — no mid-sentence cutoffs on
     // user-driven advance. User-initiated taps (ListenButton, Volume) still
     // interrupt because they don't pass this flag.
-    const t = setTimeout(() => { speak(line, { guide, queueAfterCurrent: true }); }, 350);
+    const t = setTimeout(() => { playLine(line, { guide, queueAfterCurrent: true }); }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, story, storyLoading]);
