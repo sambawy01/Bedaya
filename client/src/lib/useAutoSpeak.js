@@ -16,7 +16,10 @@ export function useAutoSpeak(line, { guide = 'umm_yasmin', delay = 350, deps = [
     const fingerprint = typeof line === 'object' ? line.key || line.text : line;
     if (lastSpoken.current === fingerprint) return;
     lastSpoken.current = fingerprint;
-    const t = setTimeout(() => speak(line, { guide }), delay);
+    // queueAfterCurrent so an inbound page's prompt waits its turn behind any
+    // clip still playing from the page we navigated away from — most visibly
+    // the post-lesson 'برافو' celebration that HomePage used to clobber.
+    const t = setTimeout(() => speak(line, { guide, queueAfterCurrent: true }), delay);
     return () => { clearTimeout(t); stopSpeaking(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);

@@ -54,7 +54,11 @@ export default function LessonPage() {
         if (!cancelled) setError(e.message || 'حدث خطأ');
       }
     })();
-    return () => { cancelled = true; stopSpeaking(); };
+    // No stopSpeaking() on unmount — when the user finishes naturally
+    // (advance('done') → finish() → navigate('/home')), we want the
+    // 'برافو' celebration to keep playing across the route change. Home
+    // button + error screen call stopSpeaking explicitly when they need to.
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learner]);
 
