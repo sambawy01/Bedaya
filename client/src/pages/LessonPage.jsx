@@ -87,7 +87,11 @@ export default function LessonPage() {
       case 'trace':
         return { key: 'phase_trace', text: 'دلوقتي اكتب الحرف بإصبعك فوق الخط.' };
       case 'story':
-        if (!story) return { key: 'phase_story_loading', text: 'لحظة صغيرة.' };
+        // Stay silent while the AI story is loading — the visual placeholder
+        // 'لحظة…' on screen already signals waiting. Speaking 'لحظة صغيرة'
+        // here only created an interruption when the story arrived 1-2s
+        // later and the real phase_story_* clip wanted the channel.
+        if (!story) return '';
         return story.mode === 'words'
           ? { key: 'phase_story_words', text: 'دي كلمات فيها بس الحروف اللي عرفتها. دوس عليها عشان تسمعها.' }
           : story.mode === 'letters'
