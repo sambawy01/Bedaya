@@ -77,10 +77,10 @@ export default function LessonPage() {
     return (plan.known || []).map((g) => ({ glyph: g, letterId: null }));
   }, [plan]);
 
-  // Build the spoken instruction for the current phase. Returns { key, text }
-  // so speak() can pick the pre-recorded ElevenLabs clip (per-guide voice)
-  // for every line — including the phonics intro, which has a per-letter
-  // phonics_intro_<glyph> clip with the letter name baked in.
+  // Build the spoken instruction for the current phase. Returns either a
+  // single line ({ key, text } or string) or { sequence: [...] } when the
+  // phase narration is a chain (e.g. phonics letter + cue, or recap
+  // opener + letter + closer) that playLine should queue contiguously.
   const phaseLine = useCallback(() => {
     switch (phase) {
       case 'warmup':
