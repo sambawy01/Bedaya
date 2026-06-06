@@ -213,10 +213,14 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
           flushQueue();
         }
       });
-      // Fall back to TTS on play rejection (404, decode error, autoplay block)
+      // Fall back to TTS on play rejection (404, decode error)
       // — but ONLY if we're still the active audio. A subsequent speak() call
       // legitimately aborts us via stopAll() and we must NOT resurrect as TTS.
-      audio.play().catch(() => {
+      audio.play().catch((err) => {
+        // Autoplay block (no user gesture yet) — silently wait. The big ListenButton
+        // on every screen is the gesture path; once tapped, unlockAudio fires and
+        // subsequent speak() calls play the real MP3.
+        if (err && err.name === 'NotAllowedError') return;
         if (_currentAudio === audio) speakViaTTS(text, guide, rate, queueAfterCurrent);
       });
       return;
@@ -237,7 +241,11 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
             flushQueue();
           }
         });
-        audio.play().catch(() => {
+        audio.play().catch((err) => {
+          // Autoplay block (no user gesture yet) — silently wait. The big ListenButton
+          // on every screen is the gesture path; once tapped, unlockAudio fires and
+          // subsequent speak() calls play the real MP3.
+          if (err && err.name === 'NotAllowedError') return;
           if (_currentAudio === audio) speakViaTTS(text, guide, rate, queueAfterCurrent);
         });
         return;
@@ -260,7 +268,11 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
             flushQueue();
           }
         });
-        audio.play().catch(() => {
+        audio.play().catch((err) => {
+          // Autoplay block (no user gesture yet) — silently wait. The big ListenButton
+          // on every screen is the gesture path; once tapped, unlockAudio fires and
+          // subsequent speak() calls play the real MP3.
+          if (err && err.name === 'NotAllowedError') return;
           if (_currentAudio === audio) speakViaTTS(text, guide, rate, queueAfterCurrent);
         });
         return;
