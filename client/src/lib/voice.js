@@ -271,6 +271,26 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
   speakViaTTS(text, guide, rate);
 }
 
+/**
+ * Play a line that may be a single clip or a sequence.
+ *  - string:                       single clip (falls through to TTS if no recording).
+ *  - { key, text }:                single clip.
+ *  - { sequence: [line, line] }:   chain via queueAfterCurrent so they play in order.
+ *
+ * `queueAfterCurrent` from the caller applies to the first item; every subsequent
+ * item is queued regardless so the sequence stays contiguous.
+ */
+export function playLine(line, { guide, queueAfterCurrent = false } = {}) {
+  if (!line) return;
+  if (Array.isArray(line.sequence)) {
+    line.sequence.forEach((part, i) => {
+      speak(part, { guide, queueAfterCurrent: queueAfterCurrent || i > 0 });
+    });
+    return;
+  }
+  speak(line, { guide, queueAfterCurrent });
+}
+
 // Exposed for ListenButton or anything that wants the shape rendered uniformly.
 export { GUIDE_SHAPE };
 
