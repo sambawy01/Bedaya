@@ -140,8 +140,10 @@ export default function LessonPage() {
     try {
       const result = await api('/story', { method: 'POST', body: { learnerId: learner.id } });
       setStory(result);
-      // Auto-read what was produced.
-      setTimeout(() => speak(result.story, { guide }), 1200);
+      // No auto-read of the generated story text — it has no pre-recorded
+      // clip (dynamic AI output) so it would fall through to browser TTS
+      // and stomp on the just-fired phase_story_* intro from useEffect.
+      // The orange Volume button below the story handles on-demand playback.
     } catch (e) {
       setError(e.message);
     } finally {
