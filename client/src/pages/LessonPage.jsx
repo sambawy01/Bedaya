@@ -116,8 +116,11 @@ export default function LessonPage() {
     spokenPhase.current = fingerprint;
     const line = phaseLine();
     if (!line) return;
-    stopSpeaking();
-    const t = setTimeout(() => { speak(line, { guide }); }, 350);
+    // queueAfterCurrent so the prior phase's clip plays to completion before
+    // we kick off the new phase's narration — no mid-sentence cutoffs on
+    // user-driven advance. User-initiated taps (ListenButton, Volume) still
+    // interrupt because they don't pass this flag.
+    const t = setTimeout(() => { speak(line, { guide, queueAfterCurrent: true }); }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, story, storyLoading]);

@@ -69,8 +69,22 @@ let _audioUnlocked = false;
 // starting fresh. Without this, an auto-fired phase prompt would race with a
 // ListenButton tap and play both clips on top of each other.
 let _currentAudio = null;
+// Single-slot queue: next thing to play when the current clip ends naturally.
+// Auto-advance on phase change pushes here so users hear the previous prompt
+// finish instead of getting cut off mid-sentence. User taps clear it.
+let _queued = null;
+
+function clearQueue() { _queued = null; }
+
+function flushQueue() {
+  if (!_queued) return;
+  const { input, opts } = _queued;
+  _queued = null;
+  speak(input, opts);
+}
 
 function stopAll() {
+  clearQueue();
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
@@ -81,6 +95,12 @@ function stopAll() {
     } catch { /* noop */ }
     _currentAudio = null;
   }
+}
+
+function isAudioActive() {
+  if (_currentAudio && !_currentAudio.paused && !_currentAudio.ended) return true;
+  if (typeof window !== 'undefined' && window.speechSynthesis?.speaking) return true;
+  return false;
 }
 
 function loadVoicesOnce() {
@@ -141,8 +161,16 @@ function speakViaTTS(text, guide, rateOverride) {
   window.speechSynthesis.speak(utter);
 }
 
-export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
+export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = false } = {}) {
   if (typeof window === 'undefined') return;
+
+  // Queue mode: if something is still playing, save this for when it ends.
+  // The latest queued request wins — earlier ones are dropped, so a quick
+  // A → B → C transition only fires the C clip after the in-flight one ends.
+  if (queueAfterCurrent && isAudioActive()) {
+    _queued = { input, opts: { guide, rate } };
+    return;
+  }
 
   const key = typeof input === 'object' && input ? input.key : null;
   const text = typeof input === 'object' && input ? input.text : input;
@@ -154,7 +182,10 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
       const audio = new Audio(clip);
       _currentAudio = audio;
       audio.addEventListener('ended', () => {
-        if (_currentAudio === audio) _currentAudio = null;
+        if (_currentAudio === audio) {
+          _currentAudio = null;
+          flushQueue();
+        }
       });
       // Fall back to TTS on play rejection (404, decode error, autoplay block)
       // — but ONLY if we're still the active audio. A subsequent speak() call
@@ -175,7 +206,10 @@ export function speak(input, { guide = 'umm_yasmin', rate } = {}) {
       const audio = new Audio(url);
       _currentAudio = audio;
       audio.addEventListener('ended', () => {
-        if (_currentAudio === audio) _currentAudio = null;
+        if (_currentAudio === audio) {
+          _currentAudio = null;
+          flushQueue();
+        }
       });
       audio.play().catch(() => {
         if (_currentAudio === audio) speakViaTTS(text, guide, rate);
