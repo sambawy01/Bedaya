@@ -1,13 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Volume2 } from 'lucide-react';
 import AlifMark from '../components/AlifMark';
 import ListenButton from '../components/ListenButton';
 import { useLearner } from '../context/LearnerContext';
 import { useGuide } from '../context/GuideContext';
-import { useAutoSpeak } from '../lib/useAutoSpeak';
-import { unlockAudio } from '../lib/voice';
+import { speak, unlockAudio } from '../lib/voice';
 
 const GREETING = {
   key: 'welcome',
@@ -18,21 +17,53 @@ export default function WelcomePage() {
   const navigate = useNavigate();
   const { learner, loading } = useLearner();
   const { guide } = useGuide();
+  // Gate the page on a first-tap gesture. Browsers block audio.play() before
+  // any user interaction, so auto-speak on mount falls through to robotic
+  // browser TTS. The pulsing speaker icon below baits the gesture; on tap we
+  // unlockAudio() and immediately speak the welcome via the proper MP3 path.
+  const [started, setStarted] = useState(false);
 
   useEffect(() => {
     if (!loading && learner) navigate('/home', { replace: true });
   }, [learner, loading, navigate]);
 
-  // Try to greet on load. If the browser blocks it (no gesture yet), the big
-  // ListenButton lets them hear it, and the first tap unlocks audio anyway.
-  useAutoSpeak(GREETING, { guide });
+  function handleStart() {
+    if (started) return;
+    unlockAudio();
+    speak(GREETING, { guide });
+    setStarted(true);
+  }
 
-  function start() {
+  function goSignup() {
     unlockAudio();
     navigate('/signup');
   }
 
   if (loading) return null;
+
+  if (!started) {
+    return (
+      <div
+        onClick={handleStart}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleStart(); }}
+        aria-label="اضغط للبدء"
+        className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-center cursor-pointer select-none"
+      >
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <AlifMark size={96} />
+        </motion.div>
+        <motion.div
+          animate={{ scale: [1, 1.15, 1] }}
+          transition={{ repeat: Infinity, duration: 1.4 }}
+          className="mt-14 w-32 h-32 rounded-full bg-[var(--color-bedaya-clay)] text-white shadow-xl flex items-center justify-center"
+        >
+          <Volume2 size={60} />
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-center">
@@ -44,7 +75,7 @@ export default function WelcomePage() {
 
       {/* The hero action: one huge, obvious, pulsing button. Voice explains it. */}
       <motion.button
-        onClick={start}
+        onClick={goSignup}
         whileTap={{ scale: 0.95 }}
         animate={{ scale: [1, 1.05, 1] }}
         transition={{ repeat: Infinity, duration: 1.8 }}
