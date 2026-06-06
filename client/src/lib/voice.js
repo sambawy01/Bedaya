@@ -101,8 +101,10 @@ function flushQueue() {
   speak(input, opts);
 }
 
-function stopAll() {
-  clearQueue();
+// Stop just the in-flight audio/TTS without touching the queue. Used when a
+// chain continuation (queueAfterCurrent path) wants to start the next clip
+// while preserving siblings that are still pending.
+function stopCurrent() {
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
@@ -113,6 +115,11 @@ function stopAll() {
     } catch { /* noop */ }
     _currentAudio = null;
   }
+}
+
+function stopAll() {
+  clearQueue();
+  stopCurrent();
 }
 
 function isAudioActive() {
@@ -166,9 +173,9 @@ export function unlockAudio() {
  *   speak('مرحبا', { guide })
  *   speak({ key: 'welcome', text: 'مرحبا' }, { guide })
  */
-function speakViaTTS(text, guide, rateOverride) {
+function speakViaTTS(text, guide, rateOverride, queueAfterCurrent = false) {
   if (!window.speechSynthesis || !text) return;
-  stopAll();
+  if (queueAfterCurrent) stopCurrent(); else stopAll();
   const shape = GUIDE_SHAPE[guide] || GUIDE_SHAPE.umm_yasmin;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = 'ar-EG';
@@ -187,7 +194,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
   // order. User-initiated taps don't use this flag, so they interrupt and
   // clear the queue via stopAll().
   if (queueAfterCurrent && isAudioActive()) {
-    _queued.push({ input, opts: { guide, rate } });
+    _queued.push({ input, opts: { guide, rate, queueAfterCurrent: true } });
     return;
   }
 
@@ -197,7 +204,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
   const clip = key && RECORDINGS[key]?.[guide];
   if (clip) {
     try {
-      stopAll();
+      if (queueAfterCurrent) stopCurrent(); else stopAll();
       const audio = new Audio(clip);
       _currentAudio = audio;
       audio.addEventListener('ended', () => {
@@ -210,7 +217,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
       // — but ONLY if we're still the active audio. A subsequent speak() call
       // legitimately aborts us via stopAll() and we must NOT resurrect as TTS.
       audio.play().catch(() => {
-        if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+        if (_currentAudio === audio) speakViaTTS(text, guide, rate, queueAfterCurrent);
       });
       return;
     } catch { /* fall through to TTS */ }
@@ -221,7 +228,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
     const letterClip = RECORDINGS[`letter_${text}`]?.[guide];
     if (letterClip) {
       try {
-        stopAll();
+        if (queueAfterCurrent) stopCurrent(); else stopAll();
         const audio = new Audio(letterClip);
         _currentAudio = audio;
         audio.addEventListener('ended', () => {
@@ -231,7 +238,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
           }
         });
         audio.play().catch(() => {
-          if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+          if (_currentAudio === audio) speakViaTTS(text, guide, rate, queueAfterCurrent);
         });
         return;
       } catch { /* fall through to TTS */ }
@@ -244,7 +251,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
     const wordClip = RECORDINGS[`word_${text}`]?.[guide];
     if (wordClip) {
       try {
-        stopAll();
+        if (queueAfterCurrent) stopCurrent(); else stopAll();
         const audio = new Audio(wordClip);
         _currentAudio = audio;
         audio.addEventListener('ended', () => {
@@ -254,7 +261,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
           }
         });
         audio.play().catch(() => {
-          if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+          if (_currentAudio === audio) speakViaTTS(text, guide, rate, queueAfterCurrent);
         });
         return;
       } catch { /* fall through to TTS */ }
@@ -268,7 +275,7 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
   // path from anywhere else, you've introduced a regression: either add a
   // recording or pass { key, text } instead of a bare string. Future work:
   // server-side ElevenLabs proxy to synthesize story content on-demand.
-  speakViaTTS(text, guide, rate);
+  speakViaTTS(text, guide, rate, queueAfterCurrent);
 }
 
 /**
