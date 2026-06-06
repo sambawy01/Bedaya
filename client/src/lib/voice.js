@@ -84,17 +84,18 @@ let _audioUnlocked = false;
 // starting fresh. Without this, an auto-fired phase prompt would race with a
 // ListenButton tap and play both clips on top of each other.
 let _currentAudio = null;
-// Single-slot queue: next thing to play when the current clip ends naturally.
-// Auto-advance on phase change pushes here so users hear the previous prompt
-// finish instead of getting cut off mid-sentence. User taps clear it.
-let _queued = null;
+// FIFO queue of pending speak() requests. Plays the next when the current
+// clip ends naturally. Auto-advance on phase change pushes here so a clip
+// finishes before the next one starts; sequence playback (e.g. example
+// words joined by ' · ') pushes multiple at once and they all play in turn.
+// User-initiated taps interrupt and clear the queue.
+let _queued = [];
 
-function clearQueue() { _queued = null; }
+function clearQueue() { _queued = []; }
 
 function flushQueue() {
-  if (!_queued) return;
-  const { input, opts } = _queued;
-  _queued = null;
+  if (_queued.length === 0) return;
+  const { input, opts } = _queued.shift();
   speak(input, opts);
 }
 
@@ -179,11 +180,12 @@ function speakViaTTS(text, guide, rateOverride) {
 export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = false } = {}) {
   if (typeof window === 'undefined') return;
 
-  // Queue mode: if something is still playing, save this for when it ends.
-  // The latest queued request wins — earlier ones are dropped, so a quick
-  // A → B → C transition only fires the C clip after the in-flight one ends.
+  // Queue mode: if something is still playing, append this for later. The
+  // FIFO queue lets a sequence (e.g. one word per pre-baked clip) play in
+  // order. User-initiated taps don't use this flag, so they interrupt and
+  // clear the queue via stopAll().
   if (queueAfterCurrent && isAudioActive()) {
-    _queued = { input, opts: { guide, rate } };
+    _queued.push({ input, opts: { guide, rate } });
     return;
   }
 

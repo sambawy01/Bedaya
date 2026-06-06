@@ -290,15 +290,26 @@ export default function LessonPage() {
                 <div dir="rtl" className="font-script text-4xl leading-loose bg-white border-2 border-stone-200 rounded-3xl p-6 min-h-32 flex items-center justify-center">
                   {story.story}
                 </div>
-                {/* ONLY remaining browser-TTS path in production. The story is
-                    AI-generated per session so it has no pre-recorded clip.
-                    Every other speak() call resolves to an ElevenLabs MP3
-                    (phrases, letter glyphs, example words). Future work:
-                    server-side ElevenLabs proxy that synthesizes the story
-                    on-demand and caches it for the session, so the orange
-                    button plays a guide-voice MP3 instead of macOS Maged. */}
+                {/* For modes 'words' and 'letters' the story is a ' · '-joined
+                    list of pre-baked words or single letters — split and queue
+                    each so the existing word_<w>/letter_<g> recordings play
+                    in turn instead of falling through to browser TTS on the
+                    joined string. Mode 'normal' (AI-generated full sentence)
+                    is still browser TTS until we add a server-side ElevenLabs
+                    proxy. */}
                 <button
-                  onClick={() => { unlockAudio(); speak(story.story, { guide }); }}
+                  onClick={() => {
+                    unlockAudio();
+                    const parts = (story.story || '')
+                      .split(' · ')
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    if (parts.length <= 1) {
+                      speak(story.story, { guide });
+                    } else {
+                      parts.forEach((p, i) => speak(p, { guide, queueAfterCurrent: i > 0 }));
+                    }
+                  }}
                   aria-label="اسمع"
                   className="mx-auto mt-5 w-20 h-20 rounded-full bg-[var(--color-bedaya-clay)] text-white shadow-md flex items-center justify-center"
                 >
