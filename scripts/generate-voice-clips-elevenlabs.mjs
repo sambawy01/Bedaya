@@ -78,6 +78,13 @@ const PHONICS_INTROS = Object.fromEntries(
   ])
 );
 
+// Per-letter name as a standalone clip — replaces the Antura MSA wavs on
+// the orange Volume button and the warm-up letter tiles. Both guides get a
+// recording so the on-tap pronunciation matches the active voice.
+const LETTER_CLIPS = Object.fromEntries(
+  Object.entries(LETTER_NAMES).map(([glyph, name]) => [`letter_${glyph}`, name])
+);
+
 const MODEL_ID = 'eleven_multilingual_v2';
 const VOICE_SETTINGS = {
   stability: 0.6,
@@ -113,7 +120,7 @@ async function main() {
   for (const [guideKey, voiceId] of Object.entries(VOICES)) {
     const outDir = path.join(ROOT, 'client', 'public', 'audio', 'voice', guideKey);
     fs.mkdirSync(outDir, { recursive: true });
-    const all = { ...PHRASES, ...PHONICS_INTROS };
+    const all = { ...PHRASES, ...PHONICS_INTROS, ...LETTER_CLIPS };
     for (const [phraseKey, text] of Object.entries(all)) {
       const dest = path.join(outDir, `${phraseKey}.mp3`);
       const bytes = await synthesize(voiceId, text, dest);

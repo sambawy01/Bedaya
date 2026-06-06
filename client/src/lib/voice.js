@@ -36,16 +36,15 @@ const STATIC_PHRASE_KEYS = [
   'phase_done',
   'error_signup', 'error_lesson',
 ];
-// Phonics intro is per-letter — see scripts/generate-voice-clips-elevenlabs.mjs.
-const PHONICS_GLYPHS = [
-  'ا','ب','ت','ث','ج','ح','خ','د','ذ','ر',
-  'ز','س','ش','ص','ض','ط','ظ','ع','غ','ف',
-  'ق','ك','ل','م','ن','ه','و','ي','ة','ء',
-];
+// Per-letter clip keys — see scripts/generate-voice-clips-elevenlabs.mjs.
+// phonics_intro_<glyph>: full sentence "ده حرف جديد. اسمه <name>. ..."
+// letter_<glyph>:        standalone letter name "<name>"
+const PHONICS_GLYPHS = Array.from(LETTER_GLYPHS);
 const RECORDINGS = Object.fromEntries(
   [
     ...STATIC_PHRASE_KEYS,
     ...PHONICS_GLYPHS.map((g) => `phonics_intro_${g}`),
+    ...PHONICS_GLYPHS.map((g) => `letter_${g}`),
   ].map((k) => [k, {
     umm_yasmin: `/audio/voice/umm_yasmin/${k}.mp3`,
     amm_hassan: `/audio/voice/amm_hassan/${k}.mp3`,
@@ -55,14 +54,14 @@ const RECORDINGS = Object.fromEntries(
 RECORDINGS.sample_umm_yasmin = { umm_yasmin: '/audio/voice/umm_yasmin/sample_umm_yasmin.mp3' };
 RECORDINGS.sample_amm_hassan = { amm_hassan: '/audio/voice/amm_hassan/sample_amm_hassan.mp3' };
 
-// Antura MSA letter-name recordings (vgwb/Antura, CC-BY 4.0, see CREDITS.md).
-// Letter names are gender-independent — one recording serves both guides.
-const LETTER_AUDIO_GLYPHS = new Set([
+// Per-guide ElevenLabs letter-name recordings replace the Antura MSA WAVs.
+// When speak() is handed a bare glyph, it derives the key letter_<glyph>
+// and looks up the recording in RECORDINGS for the active guide.
+const LETTER_GLYPHS = new Set([
   'ا','ب','ت','ث','ج','ح','خ','د','ذ','ر',
   'ز','س','ش','ص','ض','ط','ظ','ع','غ','ف',
   'ق','ك','ل','م','ن','ه','و','ي','ة','ء',
 ]);
-const LETTER_AUDIO_BASE = '/audio/letters';
 
 let _audioUnlocked = false;
 // Track the in-flight HTMLAudioElement so a new speak() can stop it before
@@ -197,25 +196,26 @@ export function speak(input, { guide = 'umm_yasmin', rate, queueAfterCurrent = f
     } catch { /* fall through to TTS */ }
   }
 
-  // Single-glyph input → use the recorded Antura letter name when available.
-  // Both guides share the recording since letter names are gender-independent.
-  if (typeof text === 'string' && LETTER_AUDIO_GLYPHS.has(text)) {
-    try {
-      stopAll();
-      const url = `${LETTER_AUDIO_BASE}/${encodeURIComponent(text)}.wav`;
-      const audio = new Audio(url);
-      _currentAudio = audio;
-      audio.addEventListener('ended', () => {
-        if (_currentAudio === audio) {
-          _currentAudio = null;
-          flushQueue();
-        }
-      });
-      audio.play().catch(() => {
-        if (_currentAudio === audio) speakViaTTS(text, guide, rate);
-      });
-      return;
-    } catch { /* fall through to TTS */ }
+  // Single-glyph input → look up the per-guide ElevenLabs letter-name clip.
+  if (typeof text === 'string' && LETTER_GLYPHS.has(text)) {
+    const letterClip = RECORDINGS[`letter_${text}`]?.[guide];
+    if (letterClip) {
+      try {
+        stopAll();
+        const audio = new Audio(letterClip);
+        _currentAudio = audio;
+        audio.addEventListener('ended', () => {
+          if (_currentAudio === audio) {
+            _currentAudio = null;
+            flushQueue();
+          }
+        });
+        audio.play().catch(() => {
+          if (_currentAudio === audio) speakViaTTS(text, guide, rate);
+        });
+        return;
+      } catch { /* fall through to TTS */ }
+    }
   }
 
   speakViaTTS(text, guide, rate);
