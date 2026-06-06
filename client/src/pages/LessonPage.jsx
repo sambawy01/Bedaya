@@ -100,7 +100,11 @@ export default function LessonPage() {
     }
   }, [phase, newLetter, story]);
 
-  // Auto-speak on phase change. In phonics, follow with the letter sound.
+  // Auto-speak on phase change. Stops any in-flight audio first — without
+  // this, the previous phase's clip overlaps the new phase's clip for the
+  // 350ms scheduling gap (and longer if the prior clip hadn't finished).
+  // Single source of truth for cross-phase audio handoff; no per-screen
+  // duct-tape needed.
   useEffect(() => {
     if (phase === 'idle') return;
     const fingerprint = `${phase}:${story?.mode || ''}:${storyLoading}`;
@@ -108,11 +112,7 @@ export default function LessonPage() {
     spokenPhase.current = fingerprint;
     const line = phaseLine();
     if (!line) return;
-    // The phonics intro already names the letter ('اسمه ألف...') in the
-    // guide's voice, so we no longer chase it with the Antura clip — that
-    // double-fire used to interrupt the intro mid-sentence with an MSA voice.
-    // The orange Volume button on the phonics screen still plays the Antura
-    // letter audio on demand.
+    stopSpeaking();
     const t = setTimeout(() => { speak(line, { guide }); }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
